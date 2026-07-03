@@ -1,0 +1,222 @@
+@* Ficha de producto: el operario identifica un producto (escáner EAN o código tecleado)
+   y ve en UNA pantalla lo que decide su trabajo: precio/oferta, stock local y de las
+   demás tiendas, datos de compra y EANs. El buscador queda siempre arriba con el foco
+   recuperado tras cada consulta, para encadenar escaneos sin tocar la pantalla
+   (en RWR4 esto eran dos páginas; en tablet cabe junto). *@
+@page "/fichaProducto"
+@inject ProductoService Productos
+@inject SesionUsuario Sesion
+@inject IJSRuntime JS
+
+<div class="r5-columna">
+
+    <div class="r5-tarjeta">
+        <form @onsubmit="BuscarAsync" class="r5-buscador">
+            <input id="busquedaProducto" class="r5-input" type="text" inputmode="numeric"
+                   placeholder="Escanea un EAN o teclea el código de producto"
+                   @bind="_codigo" @bind:event="oninput" autofocus disabled="@_buscando" />
+            <button type="submit" class="r5-btn r5-btn--primario" disabled="@(_buscando || string.IsNullOrWhiteSpace(_codigo))">
+                Buscar
+            </button>
+        </form>
+    </div>
+
+    @if (_buscando)
+    {
+        <Cargando Texto="Buscando producto…" />
+    }
+    else if (!string.IsNullOrEmpty(_error))
+    {
+        <Aviso Mensaje="@_error" />
+    }
+    else if (_producto is null)
+    {
+        <div class="r5-cargando">
+            <Icono Nombre="producto" Clase="r5-modulo__icono" />
+            <span>Escanea un código de barras o introduce un código de producto.</span>
+        </div>
+    }
+    else
+    {
+        <div class="r5-ficha">
+
+            <div class="r5-tarjeta r5-ficha__cabecera">
+                @if (_mostrarFoto)
+                {
+                    <img class="r5-ficha__foto" src="@ProductoService.UrlImagen(_producto.CodProd)"
+                         alt="" @onerror="() => _mostrarFoto = false" />
+                }
+                <div class="r5-ficha__identidad">
+                    <span class="r5-ficha__codigo">@_producto.CodProd</span>
+                    <span class="r5-ficha__nombre">@_producto.DescProd</span>
+                    <div class="r5-fila" style="gap: var(--esp-2); flex-wrap: wrap;">
+                        @if (EnOferta)
+                        {
+                            <span class="r5-badge r5-badge--oferta">Oferta hasta @_producto.OfertaHasta!.Value.ToString("dd/MM/yy")</span>
+                        }
+                        @if (_producto.FueraColeccion)
+                        {
+                            <span class="r5-badge r5-badge--aviso">Fuera de colección</span>
+                        }
+                        @if (_producto.BloqueoCompra)
+                        {
+                            <span class="r5-badge r5-badge--aviso">Compra bloqueada</span>
+                        }
+                        @if (_producto.ControlaLotes)
+                        {
+                            <span class="r5-badge r5-badge--neutro">Controla lotes</span>
+                        }
+                    </div>
+                </div>
+                <div class="r5-ficha__precio">
+                    @if (EnOferta)
+                    {
+                        <span class="r5-ficha__pvp-anterior">@Moneda(_producto.PvpSinOferta)</span>
+                    }
+                    <span class="r5-ficha__pvp">@Moneda(_producto.Pvp)</span>
+                </div>
+            </div>
+
+            <div class="r5-tarjeta">
+                <h3>Datos</h3>
+                <dl class="r5-datos mt-2">
+                    <div><dt>Unidad de venta</dt><dd>@_producto.TipoUnidad</dd></div>
+                    <div><dt>Unidades por caja</dt><dd>@_producto.UnidsCaja</dd></div>
+                    <div><dt>IVA</dt><dd>@_producto.Iva %</dd></div>
+                    <div><dt>Última compra</dt><dd>@Fecha(_producto.FechaUltCompra)</dd></div>
+                    <div><dt>Última compra (este almacén)</dt><dd>@Fecha(_producto.FechaUltCompraAlm)</dd></div>
+                    @if (_producto.DiasCaducidad > 0)
+                    {
+                        <div><dt>Días de caducidad</dt><dd>@_producto.DiasCaducidad</dd></div>
+                    }
+                </dl>
+
+                <h3 class="mt-5">Códigos de barras</h3>
+                @if (_eans is null || _eans.Count == 0)
+                {
+                    <p class="r5-texto-suave">Sin EANs registrados.</p>
+                }
+                else
+                {
+                    <dl class="r5-datos mt-2">
+                        @foreach (var ean in _eans)
+                        {
+                            <div @key="ean.CodEan">
+                                <dt>@ean.CodEan</dt>
+                                <dd>@(ean.EsCaja ? $"Caja · {ean.UnidCaja} unids" : "Unidad")</dd>
+                            </div>
+                        }
+                    </dl>
+                }
+            </div>
+
+            <div class="r5-tarjeta">
+                <h3>Stock — @Sesion.Usuario!.Almacen.DescAlm</h3>
+                <dl class="r5-datos mt-2">
+                    <div><dt>Stock actual</dt><dd>@Cantidad(_producto.Stock, _producto.DecimalesEnCant)</dd></div>
+                    @if (_producto.StockMin is not null || _producto.StockMax is not null)
+                    {
+                        <div><dt>Mínimo / Máximo</dt><dd>@(_producto.StockMin?.ToString() ?? "—") / @(_producto.StockMax?.ToString() ?? "—")</dd></div>
+                    }
+                </dl>
+
+                <h3 class="mt-5">Stock por tienda</h3>
+                @if (_stockAlmacenes is null || _stockAlmacenes.Count == 0)
+                {
+                    <p class="r5-texto-suave">Sin stock en otras tiendas.</p>
+                }
+                else
+                {
+                    <table class="r5-tabla mt-2">
+                        <thead>
+                            <tr><th>Almacén</th><th class="num">Stock</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var linea in _stockAlmacenes)
+                            {
+                                <tr @key="linea.CodAlm" class="@(linea.CodAlm == Sesion.Usuario!.Almacen.CodAlm ? "destacada" : "")">
+                                    <td>@linea.CodAlm · @linea.DescAlm</td>
+                                    <td class="num">@Cantidad(linea.Stock, _producto.DecimalesEnCant)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+
+        </div>
+    }
+</div>
+
+@code {
+    private string _codigo = "";
+    private bool _buscando;
+    private string _error = "";
+    private bool _mostrarFoto = true;
+
+    private Producto? _producto;
+    private List<Ean>? _eans;
+    private List<InfoStockProdAlm>? _stockAlmacenes;
+
+    private bool EnOferta => _producto?.PvpSinOferta is > 0
+        && _producto.Pvp < _producto.PvpSinOferta
+        && _producto.OfertaHasta is not null;
+
+    private async Task BuscarAsync()
+    {
+        string codigo = _codigo.Trim();
+        if (_buscando || codigo.Length == 0) return;
+
+        _buscando = true;
+        _error = "";
+        _producto = null;
+        _eans = null;
+        _stockAlmacenes = null;
+        try
+        {
+            short codAlm = Sesion.Usuario!.Almacen.CodAlm;
+
+            // Heurística de entrada única: 8+ dígitos = código de barras; menos = código de producto.
+            int codProd;
+            long codEan = 0;
+            if (codigo.Length >= 8 && long.TryParse(codigo, out long ean))
+            {
+                var porEan = await Productos.GetPorEanAsync(ean);
+                if (!porEan.Ok || porEan.Datos is null) { _error = porEan.Error; return; }
+                if (porEan.Datos.CodProd <= 0) { _error = $"El EAN {ean} no corresponde a ningún producto."; return; }
+                codProd = porEan.Datos.CodProd;
+                codEan = ean;
+            }
+            else if (int.TryParse(codigo, out int cod) && cod > 0)
+            {
+                codProd = cod;
+            }
+            else
+            {
+                _error = "Introduce un código numérico (producto o EAN).";
+                return;
+            }
+
+            var info = await Productos.GetInfoAsync(codProd, codAlm, codEan);
+            if (!info.Ok || info.Datos is null) { _error = info.Error; return; }
+            if (info.Datos.CodProd <= 0) { _error = $"El producto {codProd} no existe."; return; }
+
+            _producto = info.Datos;
+            _mostrarFoto = true;
+
+            // EANs y stock de tiendas en paralelo: son secundarios, no bloquean entre sí.
+            var tareaEans = Productos.GetEansAsync(codProd);
+            var tareaStock = Productos.GetStockAlmacenesAsync(codProd);
+            await Task.WhenAll(tareaEans, tareaStock);
+            _eans = tareaEans.Result.Datos ?? new();
+            _stockAlmacenes = tareaStock.Result.Datos ?? new();
+        }
+        finally
+        {
+            _buscando = false;
+            StateHasChanged();
+            // Foco y selección de vuelta al buscador: el siguiente escaneo machaca el anterior.
+            await JS.InvokeVoidAsync("r5.seleccionar", "busquedaProducto");
+        }
+    }
+}

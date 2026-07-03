@@ -60,6 +60,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<SesionUsuario>();
         builder.Services.AddSingleton<UsuarioService>();
         builder.Services.AddSingleton<DispositivoService>();
+        builder.Services.AddSingleton<ProductoService>();
 
         // ---- Hardware (impl. real por plataforma en fases posteriores) ----
         builder.Services.AddSingleton<IBalanza, BalanzaNula>();

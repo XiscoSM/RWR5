@@ -346,6 +346,130 @@ h3 { font-size: var(--texto-lg); }
     color: var(--c-texto-suave);
 }
 
+/* ---------- Buscador (escáner/teclado) ---------- */
+.r5-buscador {
+    display: flex;
+    gap: var(--esp-3);
+    align-items: stretch;
+}
+
+.r5-buscador .r5-input { flex: 1; }
+
+/* ---------- Ficha producto ---------- */
+.r5-ficha {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--esp-4);
+    align-items: start;
+}
+
+@media (max-width: 900px) {
+    .r5-ficha { grid-template-columns: 1fr; }
+}
+
+.r5-ficha__cabecera {
+    grid-column: 1 / -1;
+    display: flex;
+    gap: var(--esp-5);
+    align-items: center;
+}
+
+.r5-ficha__foto {
+    width: 128px;
+    height: 128px;
+    object-fit: contain;
+    border-radius: var(--radio-sm);
+    background: var(--c-fondo);
+    flex-shrink: 0;
+}
+
+.r5-ficha__identidad {
+    display: flex;
+    flex-direction: column;
+    gap: var(--esp-2);
+    min-width: 0;
+    flex: 1;
+}
+
+.r5-ficha__codigo { color: var(--c-texto-suave); font-size: var(--texto-md); }
+
+.r5-ficha__nombre { font-size: var(--texto-xl); font-weight: 600; }
+
+.r5-ficha__precio {
+    display: flex;
+    align-items: baseline;
+    gap: var(--esp-3);
+    margin-left: auto;
+    text-align: right;
+    flex-shrink: 0;
+}
+
+.r5-ficha__pvp { font-size: 2.25rem; font-weight: 700; color: var(--c-primario); }
+
+.r5-ficha__pvp-anterior {
+    font-size: var(--texto-lg);
+    color: var(--c-texto-suave);
+    text-decoration: line-through;
+}
+
+/* ---------- Etiquetas de estado (badges) ---------- */
+.r5-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: var(--esp-1) var(--esp-3);
+    border-radius: 999px;
+    font-size: var(--texto-sm);
+    font-weight: 600;
+    line-height: 1.4;
+}
+
+.r5-badge--oferta { background: var(--c-acento); color: #3d2800; }
+.r5-badge--aviso { background: var(--c-aviso-fondo); color: var(--c-aviso); }
+.r5-badge--neutro { background: var(--c-primario-claro); color: var(--c-primario-osc); }
+
+/* ---------- Lista de datos etiqueta:valor ---------- */
+.r5-datos { display: flex; flex-direction: column; }
+
+.r5-datos > div {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: var(--esp-4);
+    padding: var(--esp-3) 0;
+    border-bottom: 1px solid var(--c-borde);
+    font-size: var(--texto-md);
+}
+
+.r5-datos > div:last-child { border-bottom: none; }
+
+.r5-datos dt { color: var(--c-texto-suave); margin: 0; }
+.r5-datos dd { margin: 0; font-weight: 600; text-align: right; }
+
+/* ---------- Tabla ---------- */
+.r5-tabla { width: 100%; border-collapse: collapse; font-size: var(--texto-md); }
+
+.r5-tabla th {
+    text-align: left;
+    padding: var(--esp-3);
+    color: var(--c-texto-suave);
+    font-size: var(--texto-sm);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border-bottom: 2px solid var(--c-borde);
+}
+
+.r5-tabla td {
+    padding: var(--esp-3);
+    border-bottom: 1px solid var(--c-borde);
+}
+
+.r5-tabla tr:last-child td { border-bottom: none; }
+
+.r5-tabla .num { text-align: right; font-variant-numeric: tabular-nums; }
+
+.r5-tabla tr.destacada td { background: var(--c-primario-claro); font-weight: 600; }
+
 /* ---------- Utilidades ---------- */
 .r5-fila { display: flex; gap: var(--esp-4); align-items: center; }
 .r5-columna { display: flex; flex-direction: column; gap: var(--esp-4); }
