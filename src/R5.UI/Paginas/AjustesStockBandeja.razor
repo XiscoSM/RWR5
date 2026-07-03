@@ -1,0 +1,108 @@
+@* Ajustes de stock: bandeja de ajustes del usuario con tipo, destino e importe a coste. *@
+@page "/ajustesStock"
+@inject AjusteService Ajustes
+@inject SesionUsuario Sesion
+@inject NavigationManager Nav
+
+<GuardiaModulo CodMenu="5">
+<div class="r5-columna">
+
+    <div class="r5-fila">
+        <div class="r5-segmento">
+            <button class="@(!_registrados ? "activo" : "")" @onclick="() => CambiarFiltroAsync(false)">Pendientes</button>
+            <button class="@(_registrados ? "activo" : "")" @onclick="() => CambiarFiltroAsync(true)">Registrados</button>
+        </div>
+    </div>
+
+    @if (_cargando)
+    {
+        <Cargando Texto="Cargando ajustes…" />
+    }
+    else if (!string.IsNullOrEmpty(_error))
+    {
+        <Aviso Mensaje="@_error" />
+    }
+    else if (_ajustes.Count == 0)
+    {
+        <div class="r5-cargando">
+            <Icono Nombre="ajustes-stock" Clase="r5-modulo__icono" />
+            <span>No tienes ajustes @(_registrados ? "registrados" : "pendientes") en este almacén.</span>
+        </div>
+    }
+    else
+    {
+        <div class="r5-docs">
+            @foreach (var ajuste in _ajustes)
+            {
+                <button @key="@($"{ajuste.Fecha:yyyyMMdd}-{ajuste.NumAjuste}")" class="r5-doc"
+                        @onclick="() => AbrirDetalle(ajuste)">
+                    <Icono Nombre="ajustes-stock" Clase="r5-modulo__icono" />
+                    <span class="r5-doc__principal">
+                        <span class="r5-doc__titulo">Ajuste @ajuste.NumAjuste · @(ajuste.TipoAjuste.DescTipo ?? "")</span>
+                        <span class="r5-doc__detalle">
+                            @ajuste.Fecha.ToString("dd/MM/yyyy")
+                            @if (ajuste.AlmDest is not null && ajuste.AlmDest.CodAlm != Sesion.Usuario!.Almacen.CodAlm)
+                            {
+                                <text> · Destino: @ajuste.AlmDest.DescAlm</text>
+                            }
+                            @if (ajuste.ProgDestinoCab is not null && !string.IsNullOrWhiteSpace(ajuste.ProgDestinoCab.DescProg))
+                            {
+                                <text> · @ajuste.ProgDestinoCab.DescProg</text>
+                            }
+                        </span>
+                    </span>
+                    <span class="r5-doc__derecha">
+                        <span class="r5-doc__detalle">@ajuste.Prods prods · @Moneda(ajuste.ImporteCoste)</span>
+                        <span class="r5-badge @(ajuste.Reg ? "r5-badge--cerrado" : "r5-badge--abierto")">
+                            @(ajuste.Reg ? "Registrado" : "Pendiente")
+                        </span>
+                    </span>
+                </button>
+            }
+        </div>
+    }
+</div>
+</GuardiaModulo>
+
+@code {
+    private bool _registrados;
+    private bool _cargando = true;
+    private string _error = "";
+    private List<Ajuste> _ajustes = new();
+
+    protected override Task OnInitializedAsync() => CargarAsync();
+
+    private Task CambiarFiltroAsync(bool registrados)
+    {
+        if (_registrados == registrados) return Task.CompletedTask;
+        _registrados = registrados;
+        return CargarAsync();
+    }
+
+    private async Task CargarAsync()
+    {
+        if (!Sesion.Autenticado) return;
+
+        _cargando = true;
+        _error = "";
+        try
+        {
+            var respuesta = await Ajustes.GetAjustesAsync(
+                Sesion.Usuario!.Almacen.CodAlm, Sesion.Usuario.CodUsuario, _registrados);
+            if (!respuesta.Ok)
+            {
+                _error = respuesta.Error;
+                _ajustes = new();
+                return;
+            }
+            _ajustes = respuesta.Datos ?? new();
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private void AbrirDetalle(Ajuste ajuste)
+        => Nav.NavigateTo($"/ajustesStock/{ajuste.Fecha:yyyy-MM-dd}/{ajuste.NumAjuste}");
+}

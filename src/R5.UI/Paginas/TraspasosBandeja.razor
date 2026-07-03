@@ -1,0 +1,103 @@
+@* Traspasos: el operario retoma los traspasos pendientes de registrar y consulta
+   los ya registrados. Mismo patrón de bandeja que Pedido Central: segmento de
+   estado + filas táctiles con lo esencial (número, fecha, origen→destino, tamaño). *@
+@page "/traspasos"
+@inject TraspasoService Traspasos
+@inject SesionUsuario Sesion
+@inject NavigationManager Nav
+
+<GuardiaModulo CodMenu="11">
+<div class="r5-columna">
+
+    <div class="r5-fila">
+        <div class="r5-segmento">
+            <button class="@(!_registrados ? "activo" : "")" @onclick="() => CambiarFiltroAsync(false)">Pendientes</button>
+            <button class="@(_registrados ? "activo" : "")" @onclick="() => CambiarFiltroAsync(true)">Registrados</button>
+        </div>
+    </div>
+
+    @if (_cargando)
+    {
+        <Cargando Texto="Cargando traspasos…" />
+    }
+    else if (!string.IsNullOrEmpty(_error))
+    {
+        <Aviso Mensaje="@_error" />
+    }
+    else if (_traspasos.Count == 0)
+    {
+        <div class="r5-cargando">
+            <Icono Nombre="traspasos" Clase="r5-modulo__icono" />
+            <span>No tienes traspasos @(_registrados ? "registrados" : "pendientes") en este almacén.</span>
+        </div>
+    }
+    else
+    {
+        <div class="r5-docs">
+            @foreach (var traspaso in _traspasos)
+            {
+                <button @key="@($"{traspaso.Fecha:yyyyMMdd}-{traspaso.NumTraspaso}")" class="r5-doc"
+                        @onclick="() => AbrirDetalle(traspaso)">
+                    <Icono Nombre="traspasos" Clase="r5-modulo__icono" />
+                    <span class="r5-doc__principal">
+                        <span class="r5-doc__titulo">Traspaso @traspaso.NumTraspaso</span>
+                        <span class="r5-doc__detalle">
+                            @traspaso.Fecha.ToString("dd/MM/yyyy")
+                            · @(traspaso.AlmOrigen?.DescAlm ?? "?") → @(traspaso.AlmDest?.DescAlm ?? "?")
+                        </span>
+                    </span>
+                    <span class="r5-doc__derecha">
+                        <span class="r5-doc__detalle">@traspaso.CountProds prods · @Moneda(traspaso.Importe)</span>
+                        <span class="r5-badge @(traspaso.Registrado ? "r5-badge--cerrado" : "r5-badge--abierto")">
+                            @(traspaso.Registrado ? "Registrado" : "Pendiente")
+                        </span>
+                    </span>
+                </button>
+            }
+        </div>
+    }
+</div>
+</GuardiaModulo>
+
+@code {
+    private bool _registrados;
+    private bool _cargando = true;
+    private string _error = "";
+    private List<Traspaso> _traspasos = new();
+
+    protected override Task OnInitializedAsync() => CargarAsync();
+
+    private Task CambiarFiltroAsync(bool registrados)
+    {
+        if (_registrados == registrados) return Task.CompletedTask;
+        _registrados = registrados;
+        return CargarAsync();
+    }
+
+    private async Task CargarAsync()
+    {
+        if (!Sesion.Autenticado) return;
+
+        _cargando = true;
+        _error = "";
+        try
+        {
+            var respuesta = await Traspasos.GetTraspasosAsync(
+                Sesion.Usuario!.Almacen.CodAlm, Sesion.Usuario.CodUsuario, _registrados);
+            if (!respuesta.Ok)
+            {
+                _error = respuesta.Error;
+                _traspasos = new();
+                return;
+            }
+            _traspasos = respuesta.Datos ?? new();
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private void AbrirDetalle(Traspaso traspaso)
+        => Nav.NavigateTo($"/traspasos/{traspaso.Fecha:yyyy-MM-dd}/{traspaso.NumTraspaso}");
+}

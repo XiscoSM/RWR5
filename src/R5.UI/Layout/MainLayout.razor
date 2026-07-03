@@ -81,6 +81,11 @@
             "fichaproducto" => "Ficha producto",
             "cambioalmacen" => "Cambio de almacén",
             _ when ruta.StartsWith("pedidocentral") => "Pedido central",
+            _ when ruta.StartsWith("traspasos") => "Traspasos",
+            _ when ruta.StartsWith("recepcionalb") => "Recepción de albaranes",
+            _ when ruta.StartsWith("pedidocompra") => "Pedido a proveedor",
+            _ when ruta.StartsWith("inventarios") => "Inventarios",
+            _ when ruta.StartsWith("ajustesstock") => "Ajustes de stock",
             _ => "RW R5"
         };
         // Las páginas de módulo fijan su propio título vía CascadingValue en el futuro;

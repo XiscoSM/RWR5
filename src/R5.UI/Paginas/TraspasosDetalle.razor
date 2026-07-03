@@ -1,0 +1,112 @@
+@* Detalle de traspaso: líneas con cantidades pedidas vs enviadas e importe. Consulta. *@
+@page "/traspasos/{FechaRuta}/{NumTraspaso:int}"
+@inject TraspasoService Traspasos
+@inject SesionUsuario Sesion
+@inject NavigationManager Nav
+
+<GuardiaModulo CodMenu="11">
+<div class="r5-columna">
+
+    <div class="r5-fila">
+        <button class="r5-btn r5-btn--secundario" @onclick="Volver">← Traspasos</button>
+        <h2>Traspaso @NumTraspaso · @(_fecha?.ToString("dd/MM/yyyy"))</h2>
+    </div>
+
+    @if (_fecha is null)
+    {
+        <Aviso Mensaje="La fecha del traspaso no es válida." />
+    }
+    else if (_cargando)
+    {
+        <Cargando Texto="Cargando líneas…" />
+    }
+    else if (!string.IsNullOrEmpty(_error))
+    {
+        <Aviso Mensaje="@_error" />
+    }
+    else if (_lineas.Count == 0)
+    {
+        <div class="r5-cargando">
+            <Icono Nombre="traspasos" Clase="r5-modulo__icono" />
+            <span>El traspaso no tiene líneas.</span>
+        </div>
+    }
+    else
+    {
+        <div class="r5-tarjeta">
+            <table class="r5-tabla">
+                <thead>
+                    <tr>
+                        <th>Producto</th>
+                        <th class="num">Cajas</th>
+                        <th class="num">Cantidad</th>
+                        <th class="num">Cajas env.</th>
+                        <th class="num">Cant. env.</th>
+                        <th class="num">Importe</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var linea in _lineas)
+                    {
+                        <tr @key="linea.Linea">
+                            <td>
+                                <div class="r5-doc__principal">
+                                    <span>@linea.Prod.DescProd</span>
+                                    <span class="r5-doc__detalle">@linea.Prod.CodProd</span>
+                                </div>
+                            </td>
+                            <td class="num">@linea.Cajas</td>
+                            <td class="num">@Cantidad(linea.Cant, linea.Prod.DecimalesEnCant)</td>
+                            <td class="num">@linea.CajasEnv</td>
+                            <td class="num">@Cantidad(linea.CantEnv, linea.Prod.DecimalesEnCant)</td>
+                            <td class="num">@Moneda(linea.Importe)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <p class="r5-texto-suave r5-texto-sm">@_lineas.Count líneas.</p>
+    }
+</div>
+</GuardiaModulo>
+
+@code {
+    [Parameter] public string FechaRuta { get; set; } = "";
+    [Parameter] public int NumTraspaso { get; set; }
+
+    private DateTime? _fecha;
+    private bool _cargando = true;
+    private string _error = "";
+    private List<TraspasoLin> _lineas = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Sesion.Autenticado) return;
+
+        if (!DateTime.TryParseExact(FechaRuta, "yyyy-MM-dd", null,
+            System.Globalization.DateTimeStyles.None, out var fecha))
+        {
+            _fecha = null;
+            _cargando = false;
+            return;
+        }
+        _fecha = fecha;
+
+        try
+        {
+            var respuesta = await Traspasos.GetLineasAsync(NumTraspaso, fecha);
+            if (!respuesta.Ok)
+            {
+                _error = respuesta.Error;
+                return;
+            }
+            _lineas = respuesta.Datos ?? new();
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private void Volver() => Nav.NavigateTo("/traspasos");
+}

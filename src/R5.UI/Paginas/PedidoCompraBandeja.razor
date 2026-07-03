@@ -1,0 +1,104 @@
+@* Pedido a proveedor: bandeja de pedidos de compra del usuario, pendientes de
+   registrar o registrados, con proveedor y fecha prevista de envío a la vista. *@
+@page "/pedidoCompra"
+@inject PedidoCompraService Pedidos
+@inject SesionUsuario Sesion
+@inject NavigationManager Nav
+
+<GuardiaModulo CodMenu="8">
+<div class="r5-columna">
+
+    <div class="r5-fila">
+        <div class="r5-segmento">
+            <button class="@(!_registrados ? "activo" : "")" @onclick="() => CambiarFiltroAsync(false)">Pendientes</button>
+            <button class="@(_registrados ? "activo" : "")" @onclick="() => CambiarFiltroAsync(true)">Registrados</button>
+        </div>
+    </div>
+
+    @if (_cargando)
+    {
+        <Cargando Texto="Cargando pedidos…" />
+    }
+    else if (!string.IsNullOrEmpty(_error))
+    {
+        <Aviso Mensaje="@_error" />
+    }
+    else if (_pedidos.Count == 0)
+    {
+        <div class="r5-cargando">
+            <Icono Nombre="pedido-compra" Clase="r5-modulo__icono" />
+            <span>No tienes pedidos @(_registrados ? "registrados" : "pendientes") en este almacén.</span>
+        </div>
+    }
+    else
+    {
+        <div class="r5-docs">
+            @foreach (var pedido in _pedidos)
+            {
+                <button @key="pedido.NumPedido" class="r5-doc" @onclick="() => AbrirDetalle(pedido)">
+                    <Icono Nombre="pedido-compra" Clase="r5-modulo__icono" />
+                    <span class="r5-doc__principal">
+                        <span class="r5-doc__titulo">Pedido @pedido.NumPedido</span>
+                        <span class="r5-doc__detalle">
+                            @pedido.Fecha.ToString("dd/MM/yyyy") · @pedido.Prov.DescProv
+                            @if (pedido.FechaPrevEnvio.Year > 1950)
+                            {
+                                <text> · Envío prev.: @pedido.FechaPrevEnvio.ToString("dd/MM/yyyy")</text>
+                            }
+                        </span>
+                    </span>
+                    <span class="r5-doc__derecha">
+                        <span class="r5-doc__detalle">@pedido.Prods prods</span>
+                        <span class="r5-badge @(pedido.Reg ? "r5-badge--cerrado" : "r5-badge--abierto")">
+                            @(pedido.Reg ? "Registrado" : "Pendiente")
+                        </span>
+                    </span>
+                </button>
+            }
+        </div>
+    }
+</div>
+</GuardiaModulo>
+
+@code {
+    private bool _registrados;
+    private bool _cargando = true;
+    private string _error = "";
+    private List<PedidoCompra> _pedidos = new();
+
+    protected override Task OnInitializedAsync() => CargarAsync();
+
+    private Task CambiarFiltroAsync(bool registrados)
+    {
+        if (_registrados == registrados) return Task.CompletedTask;
+        _registrados = registrados;
+        return CargarAsync();
+    }
+
+    private async Task CargarAsync()
+    {
+        if (!Sesion.Autenticado) return;
+
+        _cargando = true;
+        _error = "";
+        try
+        {
+            var respuesta = await Pedidos.GetPedidosAsync(
+                Sesion.Usuario!.Almacen.CodAlm, Sesion.Usuario.CodUsuario, _registrados);
+            if (!respuesta.Ok)
+            {
+                _error = respuesta.Error;
+                _pedidos = new();
+                return;
+            }
+            _pedidos = respuesta.Datos ?? new();
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private void AbrirDetalle(PedidoCompra pedido)
+        => Nav.NavigateTo($"/pedidoCompra/{pedido.NumPedido}");
+}

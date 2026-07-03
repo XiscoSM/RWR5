@@ -1,0 +1,111 @@
+@* Detalle de inventario: conteos introducidos con terminal y hora — permite revisar
+   qué se ha contado ya y detectar dobles conteos. Consulta. *@
+@page "/inventarios/{FechaRuta}"
+@inject InventarioService Inventarios
+@inject SesionUsuario Sesion
+@inject NavigationManager Nav
+
+<GuardiaModulo CodMenu="3">
+<div class="r5-columna">
+
+    <div class="r5-fila">
+        <button class="r5-btn r5-btn--secundario" @onclick="Volver">← Inventarios</button>
+        <h2>Inventario @(_fecha?.ToString("dd/MM/yyyy"))</h2>
+    </div>
+
+    @if (_fecha is null)
+    {
+        <Aviso Mensaje="La fecha del inventario no es válida." />
+    }
+    else if (_cargando)
+    {
+        <Cargando Texto="Cargando conteos…" />
+    }
+    else if (!string.IsNullOrEmpty(_error))
+    {
+        <Aviso Mensaje="@_error" />
+    }
+    else if (_lineas.Count == 0)
+    {
+        <div class="r5-cargando">
+            <Icono Nombre="inventario" Clase="r5-modulo__icono" />
+            <span>Este terminal aún no ha introducido conteos en este inventario.</span>
+        </div>
+    }
+    else
+    {
+        <div class="r5-tarjeta">
+            <table class="r5-tabla">
+                <thead>
+                    <tr>
+                        <th>Producto</th>
+                        <th class="num">Conteo</th>
+                        <th class="num">Total contado</th>
+                        <th class="num">Terminal</th>
+                        <th class="num">Hora</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var (linea, i) in _lineas.Select((l, i) => (l, i)))
+                    {
+                        <tr @key="i">
+                            <td>
+                                <div class="r5-doc__principal">
+                                    <span>@linea.Prod.DescProd</span>
+                                    <span class="r5-doc__detalle">@linea.Prod.CodProd</span>
+                                </div>
+                            </td>
+                            <td class="num">@Cantidad(linea.Cant, linea.Prod.DecimalesEnCant)</td>
+                            <td class="num">@Cantidad(linea.CantTotal, linea.Prod.DecimalesEnCant)</td>
+                            <td class="num">@linea.NumTerminal</td>
+                            <td class="num">@linea.FechaHoraIntro.ToString("dd/MM HH:mm")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <p class="r5-texto-suave r5-texto-sm">@_lineas.Count conteos de este terminal (últimos primero).</p>
+    }
+</div>
+</GuardiaModulo>
+
+@code {
+    [Parameter] public string FechaRuta { get; set; } = "";
+
+    private DateTime? _fecha;
+    private bool _cargando = true;
+    private string _error = "";
+    private List<InventarioLin> _lineas = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Sesion.Autenticado) return;
+
+        if (!DateTime.TryParseExact(FechaRuta, "yyyy-MM-dd", null,
+            System.Globalization.DateTimeStyles.None, out var fecha))
+        {
+            _fecha = null;
+            _cargando = false;
+            return;
+        }
+        _fecha = fecha;
+
+        try
+        {
+            var respuesta = await Inventarios.GetLineasAsync(
+                Sesion.Usuario!.Almacen.CodAlm, fecha, Sesion.Usuario.NumTerminal);
+            if (!respuesta.Ok)
+            {
+                _error = respuesta.Error;
+                return;
+            }
+            _lineas = respuesta.Datos ?? new();
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private void Volver() => Nav.NavigateTo("/inventarios");
+}

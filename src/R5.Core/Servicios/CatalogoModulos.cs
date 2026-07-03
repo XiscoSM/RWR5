@@ -15,13 +15,13 @@ public static class CatalogoModulos
     // Iconos: nombre de glifo del set propio de la UI (css .icono-*). Sin dependencias externas.
     private static readonly Dictionary<byte, ModuloApp> _modulos = new()
     {
-        [3] = new(3, "Inventario", "/inventarios", "inventario", false),
-        [5] = new(5, "Ajustes stock", "/ajustesStock", "ajustes-stock", false),
+        [3] = new(3, "Inventario", "/inventarios", "inventario", true),
+        [5] = new(5, "Ajustes stock", "/ajustesStock", "ajustes-stock", true),
         [6] = new(6, "Cambio almacén", "/cambioAlmacen", "almacen", true),
         [7] = new(7, "Ficha producto", "/fichaProducto", "producto", true),
-        [8] = new(8, "Pedido proveedor", "/pedidoCompra", "pedido-compra", false),
-        [9] = new(9, "Recepción albaranes", "/recepcionAlb", "recepcion", false),
-        [11] = new(11, "Traspasos", "/traspasos", "traspasos", false),
+        [8] = new(8, "Pedido proveedor", "/pedidoCompra", "pedido-compra", true),
+        [9] = new(9, "Recepción albaranes", "/recepcionAlb", "recepcion", true),
+        [11] = new(11, "Traspasos", "/traspasos", "traspasos", true),
         [12] = new(12, "Etiquetas", "/etiquetas", "etiquetas", false),
         [19] = new(19, "Pedido central", "/pedidoCentral", "pedido-central", true),
         [22] = new(22, "Informes", "/informes", "informes", false),

@@ -1,0 +1,112 @@
+@* Recepción de albaranes: bandeja de albaranes de proveedor pendientes de registrar
+   y registrados. La fila da lo que el encargado necesita para localizarlo: número
+   (interno y del proveedor), fecha, proveedor y tamaño/importe. *@
+@page "/recepcionAlb"
+@inject AlbaranService Albaranes
+@inject SesionUsuario Sesion
+@inject NavigationManager Nav
+
+<GuardiaModulo CodMenu="9">
+<div class="r5-columna">
+
+    <div class="r5-fila">
+        <div class="r5-segmento">
+            <button class="@(!_registrados ? "activo" : "")" @onclick="() => CambiarFiltroAsync(false)">Pendientes</button>
+            <button class="@(_registrados ? "activo" : "")" @onclick="() => CambiarFiltroAsync(true)">Registrados</button>
+        </div>
+    </div>
+
+    @if (_cargando)
+    {
+        <Cargando Texto="Cargando albaranes…" />
+    }
+    else if (!string.IsNullOrEmpty(_error))
+    {
+        <Aviso Mensaje="@_error" />
+    }
+    else if (_albaranes.Count == 0)
+    {
+        <div class="r5-cargando">
+            <Icono Nombre="recepcion" Clase="r5-modulo__icono" />
+            <span>No tienes albaranes @(_registrados ? "registrados" : "pendientes") en este almacén.</span>
+        </div>
+    }
+    else
+    {
+        <div class="r5-docs">
+            @foreach (var albaran in _albaranes)
+            {
+                <button @key="@($"{albaran.Fecha:yyyyMMdd}-{albaran.NumAlbaran}")" class="r5-doc"
+                        @onclick="() => AbrirDetalle(albaran)">
+                    <Icono Nombre="recepcion" Clase="r5-modulo__icono" />
+                    <span class="r5-doc__principal">
+                        <span class="r5-doc__titulo">
+                            Albarán @albaran.NumAlbaran
+                            @if (!string.IsNullOrWhiteSpace(albaran.NumAlbProv))
+                            {
+                                <text> · Prov: @albaran.NumAlbProv</text>
+                            }
+                        </span>
+                        <span class="r5-doc__detalle">
+                            @albaran.Fecha.ToString("dd/MM/yyyy") · @albaran.Prov.DescProv
+                            @if (albaran.NumPedido > 0)
+                            {
+                                <text> · Pedido @albaran.NumPedido</text>
+                            }
+                        </span>
+                    </span>
+                    <span class="r5-doc__derecha">
+                        <span class="r5-doc__detalle">@albaran.Prods prods · @Moneda(albaran.ImpNetoComercial)</span>
+                        <span class="r5-badge @(albaran.Reg ? "r5-badge--cerrado" : "r5-badge--abierto")">
+                            @(albaran.Reg ? "Registrado" : "Pendiente")
+                        </span>
+                    </span>
+                </button>
+            }
+        </div>
+    }
+</div>
+</GuardiaModulo>
+
+@code {
+    private bool _registrados;
+    private bool _cargando = true;
+    private string _error = "";
+    private List<Albaran> _albaranes = new();
+
+    protected override Task OnInitializedAsync() => CargarAsync();
+
+    private Task CambiarFiltroAsync(bool registrados)
+    {
+        if (_registrados == registrados) return Task.CompletedTask;
+        _registrados = registrados;
+        return CargarAsync();
+    }
+
+    private async Task CargarAsync()
+    {
+        if (!Sesion.Autenticado) return;
+
+        _cargando = true;
+        _error = "";
+        try
+        {
+            var respuesta = await Albaranes.GetAlbaranesAsync(
+                Sesion.Usuario!.Almacen.CodAlm, Sesion.Usuario.CodUsuario, _registrados);
+            if (!respuesta.Ok)
+            {
+                _error = respuesta.Error;
+                _albaranes = new();
+                return;
+            }
+            _albaranes = respuesta.Datos ?? new();
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private void AbrirDetalle(Albaran albaran)
+        => Nav.NavigateTo($"/recepcionAlb/{albaran.Fecha:yyyy-MM-dd}/{albaran.NumAlbaran}");
+}

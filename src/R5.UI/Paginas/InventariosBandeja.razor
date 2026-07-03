@@ -1,0 +1,75 @@
+@* Inventarios: lista de inventarios abiertos del almacén (no hay estado registrado
+   en la API: un inventario desaparece de la lista al procesarse en RW). *@
+@page "/inventarios"
+@inject InventarioService Inventarios
+@inject SesionUsuario Sesion
+@inject NavigationManager Nav
+
+<GuardiaModulo CodMenu="3">
+<div class="r5-columna">
+
+    @if (_cargando)
+    {
+        <Cargando Texto="Cargando inventarios…" />
+    }
+    else if (!string.IsNullOrEmpty(_error))
+    {
+        <Aviso Mensaje="@_error" />
+    }
+    else if (_inventarios.Count == 0)
+    {
+        <div class="r5-cargando">
+            <Icono Nombre="inventario" Clase="r5-modulo__icono" />
+            <span>No hay inventarios abiertos en este almacén.</span>
+        </div>
+    }
+    else
+    {
+        <div class="r5-docs">
+            @foreach (var inventario in _inventarios)
+            {
+                <button @key="@($"{inventario.Fecha:yyyyMMdd}")" class="r5-doc"
+                        @onclick="() => AbrirDetalle(inventario)">
+                    <Icono Nombre="inventario" Clase="r5-modulo__icono" />
+                    <span class="r5-doc__principal">
+                        <span class="r5-doc__titulo">Inventario @inventario.Fecha.ToString("dd/MM/yyyy")</span>
+                        <span class="r5-doc__detalle">Almacén @inventario.CodAlm</span>
+                    </span>
+                    <span class="r5-doc__derecha">
+                        <span class="r5-doc__detalle">@inventario.CountProds productos contados</span>
+                    </span>
+                </button>
+            }
+        </div>
+    }
+</div>
+</GuardiaModulo>
+
+@code {
+    private bool _cargando = true;
+    private string _error = "";
+    private List<Inventario> _inventarios = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Sesion.Autenticado) return;
+
+        try
+        {
+            var respuesta = await Inventarios.GetInventariosAsync(Sesion.Usuario!.Almacen.CodAlm);
+            if (!respuesta.Ok)
+            {
+                _error = respuesta.Error;
+                return;
+            }
+            _inventarios = respuesta.Datos ?? new();
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private void AbrirDetalle(Inventario inventario)
+        => Nav.NavigateTo($"/inventarios/{inventario.Fecha:yyyy-MM-dd}");
+}

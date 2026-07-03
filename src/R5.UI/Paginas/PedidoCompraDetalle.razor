@@ -1,0 +1,97 @@
+@* Detalle de pedido a proveedor: líneas con cantidades, recibido, precio y stock. Consulta. *@
+@page "/pedidoCompra/{NumPedido:int}"
+@inject PedidoCompraService Pedidos
+@inject SesionUsuario Sesion
+@inject NavigationManager Nav
+
+<GuardiaModulo CodMenu="8">
+<div class="r5-columna">
+
+    <div class="r5-fila">
+        <button class="r5-btn r5-btn--secundario" @onclick="Volver">← Pedidos</button>
+        <h2>Pedido @NumPedido</h2>
+    </div>
+
+    @if (_cargando)
+    {
+        <Cargando Texto="Cargando líneas…" />
+    }
+    else if (!string.IsNullOrEmpty(_error))
+    {
+        <Aviso Mensaje="@_error" />
+    }
+    else if (_lineas.Count == 0)
+    {
+        <div class="r5-cargando">
+            <Icono Nombre="pedido-compra" Clase="r5-modulo__icono" />
+            <span>El pedido no tiene líneas.</span>
+        </div>
+    }
+    else
+    {
+        <div class="r5-tarjeta">
+            <table class="r5-tabla">
+                <thead>
+                    <tr>
+                        <th>Producto</th>
+                        <th class="num">Cajas</th>
+                        <th class="num">Cantidad</th>
+                        <th class="num">Recibida</th>
+                        <th class="num">PNC</th>
+                        <th class="num">Stock</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var linea in _lineas)
+                    {
+                        <tr @key="linea.Linea">
+                            <td>
+                                <div class="r5-doc__principal">
+                                    <span>@linea.Prod.DescProd</span>
+                                    <span class="r5-doc__detalle">@linea.Prod.CodProd</span>
+                                </div>
+                            </td>
+                            <td class="num">@linea.Cajas</td>
+                            <td class="num">@Cantidad(linea.Cant, linea.Prod.DecimalesEnCant)</td>
+                            <td class="num">@Cantidad(linea.CantRecibida, linea.Prod.DecimalesEnCant)</td>
+                            <td class="num">@Moneda(linea.PNC)</td>
+                            <td class="num">@Cantidad(linea.Stock, linea.Prod.DecimalesEnCant)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <p class="r5-texto-suave r5-texto-sm">@_lineas.Count líneas.</p>
+    }
+</div>
+</GuardiaModulo>
+
+@code {
+    [Parameter] public int NumPedido { get; set; }
+
+    private bool _cargando = true;
+    private string _error = "";
+    private List<PedidoCompraLin> _lineas = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Sesion.Autenticado) return;
+
+        try
+        {
+            var respuesta = await Pedidos.GetLineasAsync(NumPedido);
+            if (!respuesta.Ok)
+            {
+                _error = respuesta.Error;
+                return;
+            }
+            _lineas = respuesta.Datos ?? new();
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private void Volver() => Nav.NavigateTo("/pedidoCompra");
+}
