@@ -1,0 +1,24 @@
+@* Guardia de permiso por módulo: el contenido solo se muestra si el usuario tiene
+   el menú (CodMenu) concedido en RW. Cubre el acceso por URL directa — la rejilla
+   de Inicio ya oculta las teselas sin permiso, pero eso solo es presentación. *@
+@inject SesionUsuario Sesion
+
+@if (Permitido)
+{
+    @ChildContent
+}
+else
+{
+    <div class="r5-ancho-form">
+        <Aviso Tipo="info" Mensaje="Tu usuario no tiene permiso para este módulo. Pide acceso en la configuración de usuarios de RW." />
+    </div>
+}
+
+@code {
+    /// <summary>Menú de RW que habilita este módulo.</summary>
+    [Parameter, EditorRequired] public byte CodMenu { get; set; }
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private bool Permitido => Sesion.Usuario?.Menus.Any(m => m.CodMenu == CodMenu) == true;
+}
