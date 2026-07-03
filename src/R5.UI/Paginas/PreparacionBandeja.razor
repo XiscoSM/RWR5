@@ -1,0 +1,105 @@
+@* Preparación (lado central): el preparador ve sus preparaciones asignadas y el
+   pool de pedidos cerrados pendientes de asignar. Los contadores de cada fila
+   (pedidos, pendientes, preparados) dicen de un vistazo cuánto trabajo queda. *@
+@page "/preparacion"
+@inject PreparacionService Preparaciones
+@inject SesionUsuario Sesion
+@inject NavigationManager Nav
+
+<GuardiaModulo CodMenu="24">
+<div class="r5-columna">
+
+    <div class="r5-fila">
+        <div class="r5-segmento">
+            <button class="@(!_verCerrados ? "activo" : "")" @onclick="() => CambiarVistaAsync(false)">Mis preparaciones</button>
+            <button class="@(_verCerrados ? "activo" : "")" @onclick="() => CambiarVistaAsync(true)">Pedidos cerrados</button>
+        </div>
+    </div>
+
+    @if (_cargando)
+    {
+        <Cargando Texto="Cargando…" />
+    }
+    else if (!string.IsNullOrEmpty(_error))
+    {
+        <Aviso Mensaje="@_error" />
+    }
+    else if (_preparaciones.Count == 0)
+    {
+        <div class="r5-cargando">
+            <Icono Nombre="preparacion" Clase="r5-modulo__icono" />
+            <span>@(_verCerrados ? "No hay pedidos cerrados pendientes en este almacén." : "No tienes preparaciones asignadas.")</span>
+        </div>
+    }
+    else
+    {
+        <div class="r5-docs">
+            @foreach (var prep in _preparaciones)
+            {
+                <button @key="@($"{prep.Fecha:yyyyMMdd}-{prep.Pedido}")" class="r5-doc"
+                        @onclick="() => AbrirDetalle(prep)">
+                    <Icono Nombre="preparacion" Clase="r5-modulo__icono" />
+                    <span class="r5-doc__principal">
+                        <span class="r5-doc__titulo">Pedido @prep.Pedido · @prep.Alm.DescAlm</span>
+                        <span class="r5-doc__detalle">
+                            @prep.Fecha.ToString("dd/MM/yyyy")
+                            @if (prep.CountPedidos > 1)
+                            {
+                                <text> · agrupa @prep.CountPedidos pedidos</text>
+                            }
+                        </span>
+                    </span>
+                    <span class="r5-doc__derecha">
+                        <span class="r5-doc__detalle">@prep.Preparados preparados · @prep.CountPendientes pendientes</span>
+                    </span>
+                </button>
+            }
+        </div>
+    }
+</div>
+</GuardiaModulo>
+
+@code {
+    private bool _verCerrados;
+    private bool _cargando = true;
+    private string _error = "";
+    private List<PrepPedCentral> _preparaciones = new();
+
+    protected override Task OnInitializedAsync() => CargarAsync();
+
+    private Task CambiarVistaAsync(bool verCerrados)
+    {
+        if (_verCerrados == verCerrados) return Task.CompletedTask;
+        _verCerrados = verCerrados;
+        return CargarAsync();
+    }
+
+    private async Task CargarAsync()
+    {
+        if (!Sesion.Autenticado) return;
+
+        _cargando = true;
+        _error = "";
+        try
+        {
+            short codAlm = Sesion.Usuario!.Almacen.CodAlm;
+            var respuesta = _verCerrados
+                ? await Preparaciones.GetPedidosCerradosAsync(codAlm)
+                : await Preparaciones.GetPreparacionesAsync(codAlm, Sesion.Usuario.CodUsuario, Sesion.Usuario.Almacen.SoloConStock);
+            if (!respuesta.Ok)
+            {
+                _error = respuesta.Error;
+                _preparaciones = new();
+                return;
+            }
+            _preparaciones = respuesta.Datos ?? new();
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private void AbrirDetalle(PrepPedCentral prep)
+        => Nav.NavigateTo($"/preparacion/{prep.Fecha:yyyy-MM-dd}/{prep.Pedido}");
+}

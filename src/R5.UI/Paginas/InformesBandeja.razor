@@ -1,0 +1,83 @@
+@* Informes manuales: lista de informes del usuario con su tipo y estado. *@
+@page "/informes"
+@inject InformeService Informes
+@inject SesionUsuario Sesion
+@inject NavigationManager Nav
+
+<GuardiaModulo CodMenu="22">
+<div class="r5-columna">
+
+    @if (_cargando)
+    {
+        <Cargando Texto="Cargando informes…" />
+    }
+    else if (!string.IsNullOrEmpty(_error))
+    {
+        <Aviso Mensaje="@_error" />
+    }
+    else if (_informes.Count == 0)
+    {
+        <div class="r5-cargando">
+            <Icono Nombre="informes" Clase="r5-modulo__icono" />
+            <span>No tienes informes en este almacén.</span>
+        </div>
+    }
+    else
+    {
+        <div class="r5-docs">
+            @foreach (var informe in _informes)
+            {
+                <button @key="informe.NumInforme" class="r5-doc" @onclick="() => AbrirDetalle(informe)">
+                    <Icono Nombre="informes" Clase="r5-modulo__icono" />
+                    <span class="r5-doc__principal">
+                        <span class="r5-doc__titulo">Informe @informe.NumInforme · @(informe.TipoInforme?.DescTipo ?? "")</span>
+                        <span class="r5-doc__detalle">
+                            @informe.Fecha.ToString("dd/MM/yyyy")
+                            @if (informe.AlmDest is not null && informe.AlmDest.CodAlm > 0)
+                            {
+                                <text> · Destino: @informe.AlmDest.DescAlm</text>
+                            }
+                        </span>
+                    </span>
+                    <span class="r5-doc__derecha">
+                        <span class="r5-doc__detalle">@informe.Prods prods</span>
+                        <span class="r5-badge @(informe.Estado ? "r5-badge--cerrado" : "r5-badge--abierto")">
+                            @(informe.Estado ? "Registrado" : "Pendiente")
+                        </span>
+                    </span>
+                </button>
+            }
+        </div>
+    }
+</div>
+</GuardiaModulo>
+
+@code {
+    private bool _cargando = true;
+    private string _error = "";
+    private List<Informe> _informes = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Sesion.Autenticado) return;
+
+        try
+        {
+            var respuesta = await Informes.GetInformesAsync(
+                Sesion.Usuario!.Almacen.CodAlm, Sesion.Usuario.CodUsuario);
+            if (!respuesta.Ok)
+            {
+                _error = respuesta.Error;
+                return;
+            }
+            _informes = respuesta.Datos ?? new();
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private void AbrirDetalle(Informe informe)
+        => Nav.NavigateTo($"/informes/{informe.NumInforme}");
+}

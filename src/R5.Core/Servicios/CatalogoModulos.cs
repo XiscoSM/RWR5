@@ -24,8 +24,8 @@ public static class CatalogoModulos
         [11] = new(11, "Traspasos", "/traspasos", "traspasos", true),
         [12] = new(12, "Etiquetas", "/etiquetas", "etiquetas", false),
         [19] = new(19, "Pedido central", "/pedidoCentral", "pedido-central", true),
-        [22] = new(22, "Informes", "/informes", "informes", false),
-        [24] = new(24, "Preparación", "/preparacion", "preparacion", false),
+        [22] = new(22, "Informes", "/informes", "informes", true),
+        [24] = new(24, "Preparación", "/preparacion", "preparacion", true),
     };
 
     /// <summary>Cruza los menús con permiso del usuario con el catálogo de R5.</summary>

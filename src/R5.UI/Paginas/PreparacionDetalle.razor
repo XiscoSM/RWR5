@@ -1,0 +1,137 @@
+@* Detalle de preparación: qué queda por preparar y qué está ya preparado, con
+   pedido vs enviado y stock de central. Consulta; el flujo de picking (registrar
+   línea a línea) es la fase siguiente. *@
+@page "/preparacion/{FechaRuta}/{Pedido:int}"
+@inject PreparacionService Preparaciones
+@inject SesionUsuario Sesion
+@inject NavigationManager Nav
+
+<GuardiaModulo CodMenu="24">
+<div class="r5-columna">
+
+    <div class="r5-fila">
+        <button class="r5-btn r5-btn--secundario" @onclick="Volver">← Preparación</button>
+        <h2>Pedido @Pedido · @(_fecha?.ToString("dd/MM/yyyy"))</h2>
+        <div class="r5-segmento">
+            <button class="@(!_verPreparadas ? "activo" : "")" @onclick="() => CambiarVistaAsync(false)">Pendientes</button>
+            <button class="@(_verPreparadas ? "activo" : "")" @onclick="() => CambiarVistaAsync(true)">Preparadas</button>
+        </div>
+    </div>
+
+    @if (_fecha is null)
+    {
+        <Aviso Mensaje="La fecha del pedido no es válida." />
+    }
+    else if (_cargando)
+    {
+        <Cargando Texto="Cargando líneas…" />
+    }
+    else if (!string.IsNullOrEmpty(_error))
+    {
+        <Aviso Mensaje="@_error" />
+    }
+    else if (_lineas.Count == 0)
+    {
+        <div class="r5-cargando">
+            <Icono Nombre="preparacion" Clase="r5-modulo__icono" />
+            @* Siguientes/Preparadas filtran por usuario asignado: un pedido del pool sin asignar sale vacío. *@
+            <span>@(_verPreparadas ? "Aún no hay líneas preparadas." : "No quedan líneas pendientes (si el pedido no está asignado a tu usuario, asígnalo primero).")</span>
+        </div>
+    }
+    else
+    {
+        <div class="r5-tarjeta">
+            <table class="r5-tabla">
+                <thead>
+                    <tr>
+                        <th>Producto</th>
+                        <th class="num">Cajas ped.</th>
+                        <th class="num">Cant. ped.</th>
+                        <th class="num">Cajas env.</th>
+                        <th class="num">Cant. env.</th>
+                        <th class="num">Stock central</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var (linea, i) in _lineas.Select((l, i) => (l, i)))
+                    {
+                        <tr @key="@($"{linea.Prod.CodProd}-{i}")">
+                            <td>
+                                <div class="r5-doc__principal">
+                                    <span>@linea.Prod.DescProd</span>
+                                    <span class="r5-doc__detalle">@linea.Prod.CodProd · Ubi: @linea.Prod.Ubicacion</span>
+                                </div>
+                            </td>
+                            <td class="num">@linea.CajasPedidas</td>
+                            <td class="num">@Cantidad(linea.CantPedida, linea.Prod.DecimalesEnCant)</td>
+                            <td class="num">@linea.CajasEnviadas</td>
+                            <td class="num">@Cantidad(linea.CantEnviada, linea.Prod.DecimalesEnCant)</td>
+                            <td class="num">@Cantidad(linea.StockCentral, linea.Prod.DecimalesEnCant)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <p class="r5-texto-suave r5-texto-sm">@_lineas.Count líneas.</p>
+    }
+</div>
+</GuardiaModulo>
+
+@code {
+    [Parameter] public string FechaRuta { get; set; } = "";
+    [Parameter] public int Pedido { get; set; }
+
+    private DateTime? _fecha;
+    private bool _verPreparadas;
+    private bool _cargando = true;
+    private string _error = "";
+    private List<PrepPedCentralLin> _lineas = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!DateTime.TryParseExact(FechaRuta, "yyyy-MM-dd", null,
+            System.Globalization.DateTimeStyles.None, out var fecha))
+        {
+            _fecha = null;
+            _cargando = false;
+            return;
+        }
+        _fecha = fecha;
+        await CargarAsync();
+    }
+
+    private Task CambiarVistaAsync(bool verPreparadas)
+    {
+        if (_verPreparadas == verPreparadas) return Task.CompletedTask;
+        _verPreparadas = verPreparadas;
+        return CargarAsync();
+    }
+
+    private async Task CargarAsync()
+    {
+        if (!Sesion.Autenticado || _fecha is null) return;
+
+        _cargando = true;
+        _error = "";
+        try
+        {
+            var usuario = Sesion.Usuario!;
+            var respuesta = _verPreparadas
+                ? await Preparaciones.GetLineasPreparadasAsync(_fecha.Value, Pedido, usuario.CodUsuario)
+                : await Preparaciones.GetLineasPendientesAsync(_fecha.Value, Pedido, usuario.CodUsuario, usuario.Almacen.SoloConStock);
+            if (!respuesta.Ok)
+            {
+                _error = respuesta.Error;
+                _lineas = new();
+                return;
+            }
+            _lineas = respuesta.Datos ?? new();
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private void Volver() => Nav.NavigateTo("/preparacion");
+}

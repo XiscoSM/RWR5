@@ -1,0 +1,123 @@
+@* Detalle de informe: las columnas se adaptan al TipoInforme (cajas, cantidad,
+   precios y valores solo si el tipo los usa), igual que hace R3. Consulta. *@
+@page "/informes/{NumInforme:int}"
+@inject InformeService Informes
+@inject SesionUsuario Sesion
+@inject NavigationManager Nav
+
+<GuardiaModulo CodMenu="22">
+<div class="r5-columna">
+
+    <div class="r5-fila">
+        <button class="r5-btn r5-btn--secundario" @onclick="Volver">← Informes</button>
+        <h2>Informe @NumInforme@(_tipo?.DescTipo is null ? "" : $" · {_tipo.DescTipo}")</h2>
+    </div>
+
+    @if (_cargando)
+    {
+        <Cargando Texto="Cargando informe…" />
+    }
+    else if (!string.IsNullOrEmpty(_error))
+    {
+        <Aviso Mensaje="@_error" />
+    }
+    else if (_lineas.Count == 0)
+    {
+        <div class="r5-cargando">
+            <Icono Nombre="informes" Clase="r5-modulo__icono" />
+            <span>El informe no tiene líneas.</span>
+        </div>
+    }
+    else
+    {
+        <div class="r5-tarjeta">
+            <table class="r5-tabla">
+                <thead>
+                    <tr>
+                        <th>Producto</th>
+                        @if (VerCajas) { <th class="num">Cajas</th> }
+                        @if (VerCant) { <th class="num">Cantidad</th> }
+                        @if (VerPrecioA) { <th class="num">@Cabecera(_tipo?.PrecioA_Desc, "Precio A")</th> }
+                        @if (VerPrecioB) { <th class="num">@Cabecera(_tipo?.PrecioB_Desc, "Precio B")</th> }
+                        @if (VerPrecioC) { <th class="num">@Cabecera(_tipo?.PrecioC_Desc, "Precio C")</th> }
+                        @if (VerValorA) { <th class="num">@Cabecera(_tipo?.ValorA_Desc, "Valor A")</th> }
+                        @if (VerValorB) { <th class="num">@Cabecera(_tipo?.ValorB_Desc, "Valor B")</th> }
+                        @if (VerValorC) { <th class="num">@Cabecera(_tipo?.ValorC_Desc, "Valor C")</th> }
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var linea in _lineas)
+                    {
+                        <tr @key="linea.Linea">
+                            <td>
+                                <div class="r5-doc__principal">
+                                    <span>@linea.Prod.DescProd</span>
+                                    <span class="r5-doc__detalle">@linea.Prod.CodProd</span>
+                                </div>
+                            </td>
+                            @if (VerCajas) { <td class="num">@(linea.Cajas?.ToString() ?? "—")</td> }
+                            @if (VerCant) { <td class="num">@Cantidad(linea.Cant, linea.Prod.DecimalesEnCant)</td> }
+                            @if (VerPrecioA) { <td class="num">@Moneda(linea.PrecioA)</td> }
+                            @if (VerPrecioB) { <td class="num">@Moneda(linea.PrecioB)</td> }
+                            @if (VerPrecioC) { <td class="num">@Moneda(linea.PrecioC)</td> }
+                            @if (VerValorA) { <td class="num">@(linea.ValorA ?? "—")</td> }
+                            @if (VerValorB) { <td class="num">@(linea.ValorB ?? "—")</td> }
+                            @if (VerValorC) { <td class="num">@(linea.ValorC ?? "—")</td> }
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <p class="r5-texto-suave r5-texto-sm">@_lineas.Count líneas.</p>
+    }
+</div>
+</GuardiaModulo>
+
+@code {
+    [Parameter] public int NumInforme { get; set; }
+
+    private bool _cargando = true;
+    private string _error = "";
+    private TipoInforme? _tipo;
+    private List<InformeLin> _lineas = new();
+
+    // Visibilidad por tipo (0 oculto); si no hay tipo, se muestra lo que tenga datos.
+    private bool VerCajas => _tipo?.Cajas is null or > 0;
+    private bool VerCant => _tipo?.Cant is null or > 0;
+    private bool VerPrecioA => _tipo?.PrecioA is null or > 0;
+    private bool VerPrecioB => _tipo?.PrecioB > 0;
+    private bool VerPrecioC => _tipo?.PrecioC > 0;
+    private bool VerValorA => _tipo?.ValorA > 0;
+    private bool VerValorB => _tipo?.ValorB > 0;
+    private bool VerValorC => _tipo?.ValorC > 0;
+
+    private static string Cabecera(string? desc, string porDefecto)
+        => string.IsNullOrWhiteSpace(desc) ? porDefecto : desc;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Sesion.Autenticado) return;
+
+        try
+        {
+            // Cabecera (define columnas) y líneas en paralelo.
+            var tareaInforme = Informes.GetInformeAsync(NumInforme);
+            var tareaLineas = Informes.GetLineasAsync(NumInforme);
+            await Task.WhenAll(tareaInforme, tareaLineas);
+
+            _tipo = tareaInforme.Result.Datos?.TipoInforme;
+            if (!tareaLineas.Result.Ok)
+            {
+                _error = tareaLineas.Result.Error;
+                return;
+            }
+            _lineas = tareaLineas.Result.Datos ?? new();
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private void Volver() => Nav.NavigateTo("/informes");
+}
