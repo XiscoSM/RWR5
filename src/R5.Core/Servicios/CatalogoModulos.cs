@@ -17,7 +17,7 @@ public static class CatalogoModulos
     {
         [3] = new(3, "Inventario", "/inventarios", "inventario", false),
         [5] = new(5, "Ajustes stock", "/ajustesStock", "ajustes-stock", false),
-        [6] = new(6, "Cambio almacén", "/cambioAlmacen", "almacen", false),
+        [6] = new(6, "Cambio almacén", "/cambioAlmacen", "almacen", true),
         [7] = new(7, "Ficha producto", "/fichaProducto", "producto", true),
         [8] = new(8, "Pedido proveedor", "/pedidoCompra", "pedido-compra", false),
         [9] = new(9, "Recepción albaranes", "/recepcionAlb", "recepcion", false),

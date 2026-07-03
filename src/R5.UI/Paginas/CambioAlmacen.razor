@@ -1,0 +1,89 @@
+@* Cambio de almacén: el usuario (con permiso) cambia la tienda de contexto de TODA
+   la app. Muestra claramente el almacén actual, pide el número del nuevo y valida
+   contra la API (que comprueba el permiso); la barra superior refleja el cambio. *@
+@page "/cambioAlmacen"
+@inject UsuarioService Usuarios
+@inject SesionUsuario Sesion
+@inject NavigationManager Nav
+
+@if (Sesion.Autenticado)
+{
+    <div class="r5-columna r5-ancho-form">
+
+        <div class="r5-tarjeta r5-columna">
+            <h2>Almacén actual</h2>
+            <div class="r5-fila">
+                <Icono Nombre="almacen" Clase="r5-modulo__icono" />
+                <div>
+                    <div class="r5-ficha__nombre">@Sesion.Usuario!.Almacen.CodAlm · @Sesion.Usuario.Almacen.DescAlm</div>
+                    <div class="r5-texto-suave r5-texto-sm">Todas las operaciones de la app trabajan contra este almacén.</div>
+                </div>
+            </div>
+        </div>
+
+        @if (!Sesion.Usuario!.PermiteCambioAlm)
+        {
+            <Aviso Tipo="info" Mensaje="Tu usuario no tiene permiso para cambiar de almacén." />
+        }
+        else
+        {
+            <form class="r5-tarjeta r5-columna" @onsubmit="CambiarAsync">
+                <h2>Cambiar a</h2>
+                <div class="r5-campo">
+                    <label for="nuevoAlmacen">Número de almacén</label>
+                    <input id="nuevoAlmacen" class="r5-input r5-input--numero" type="number" inputmode="numeric"
+                           min="1" max="999" @bind="_nuevoAlmacen" @bind:event="oninput" autofocus disabled="@_cambiando" />
+                </div>
+
+                <Aviso Mensaje="@_error" />
+
+                <button type="submit" class="r5-btn r5-btn--primario r5-btn--bloque"
+                        disabled="@(_cambiando || _nuevoAlmacen is null or <= 0)">
+                    @(_cambiando ? "Comprobando…" : "Cambiar almacén")
+                </button>
+            </form>
+        }
+    </div>
+}
+
+@code {
+    private short? _nuevoAlmacen;
+    private bool _cambiando;
+    private string _error = "";
+
+    private async Task CambiarAsync()
+    {
+        if (_cambiando || _nuevoAlmacen is null or <= 0) return;
+
+        if (_nuevoAlmacen == Sesion.Usuario!.Almacen.CodAlm)
+        {
+            _error = $"Ya estás en el almacén {_nuevoAlmacen}.";
+            return;
+        }
+
+        _cambiando = true;
+        _error = "";
+        try
+        {
+            var respuesta = await Usuarios.GetAlmacenAsync(Sesion.Usuario.CodUsuario, _nuevoAlmacen.Value);
+            if (!respuesta.Ok || respuesta.Datos is null)
+            {
+                _error = respuesta.Error;
+                return;
+            }
+            if (respuesta.Datos.CodAlm <= 0)
+            {
+                _error = $"El almacén {_nuevoAlmacen} no existe o no tienes permiso.";
+                _nuevoAlmacen = null;
+                return;
+            }
+
+            Sesion.CambiarAlmacen(respuesta.Datos);
+            Nav.NavigateTo("/inicio");
+        }
+        finally
+        {
+            _cambiando = false;
+        }
+    }
+}
