@@ -23,7 +23,7 @@ public static class CatalogoModulos
         [9] = new(9, "Recepción albaranes", "/recepcionAlb", "recepcion", false),
         [11] = new(11, "Traspasos", "/traspasos", "traspasos", false),
         [12] = new(12, "Etiquetas", "/etiquetas", "etiquetas", false),
-        [19] = new(19, "Pedido central", "/pedidoCentral", "pedido-central", false),
+        [19] = new(19, "Pedido central", "/pedidoCentral", "pedido-central", true),
         [22] = new(22, "Informes", "/informes", "informes", false),
         [24] = new(24, "Preparación", "/preparacion", "preparacion", false),
     };

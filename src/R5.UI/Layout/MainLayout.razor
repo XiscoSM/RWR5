@@ -80,6 +80,7 @@
             "ajustes" => "Ajustes",
             "fichaproducto" => "Ficha producto",
             "cambioalmacen" => "Cambio de almacén",
+            _ when ruta.StartsWith("pedidocentral") => "Pedido central",
             _ => "RW R5"
         };
         // Las páginas de módulo fijan su propio título vía CascadingValue en el futuro;

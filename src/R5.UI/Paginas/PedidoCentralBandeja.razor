@@ -1,0 +1,104 @@
+@* Bandeja de Pedido Central: el usuario necesita retomar sus pedidos en curso y
+   consultar los ya cerrados. Filtro Abiertos/Cerrados como segmento (dos estados
+   que la API sirve por separado) y filas grandes táctiles con número, fecha y
+   estado; tocar una abre el detalle. *@
+@page "/pedidoCentral"
+@inject PedidoCentralService Pedidos
+@inject SesionUsuario Sesion
+@inject NavigationManager Nav
+
+<GuardiaModulo CodMenu="19">
+<div class="r5-columna">
+
+    <div class="r5-fila">
+        <div class="r5-segmento">
+            <button class="@(_estado == 0 ? "activo" : "")" @onclick="() => CambiarEstadoAsync(0)">Abiertos</button>
+            <button class="@(_estado == 1 ? "activo" : "")" @onclick="() => CambiarEstadoAsync(1)">Cerrados</button>
+        </div>
+    </div>
+
+    @if (_cargando)
+    {
+        <Cargando Texto="Cargando pedidos…" />
+    }
+    else if (!string.IsNullOrEmpty(_error))
+    {
+        <Aviso Mensaje="@_error" />
+    }
+    else if (_pedidos.Count == 0)
+    {
+        <div class="r5-cargando">
+            <Icono Nombre="pedido-central" Clase="r5-modulo__icono" />
+            <span>No tienes pedidos @(_estado == 0 ? "abiertos" : "cerrados") en este almacén.</span>
+        </div>
+    }
+    else
+    {
+        <div class="r5-docs">
+            @foreach (var pedido in _pedidos)
+            {
+                <button @key="@($"{pedido.Fecha:yyyyMMdd}-{pedido.NumPedido}")" class="r5-doc"
+                        @onclick="() => AbrirDetalle(pedido)">
+                    <Icono Nombre="pedido-central" Clase="r5-modulo__icono" />
+                    <span class="r5-doc__principal">
+                        <span class="r5-doc__titulo">Pedido @pedido.NumPedido</span>
+                        <span class="r5-doc__detalle">
+                            @pedido.Fecha.ToString("dd/MM/yyyy")
+                            @if (pedido.AlmCentral is not null)
+                            {
+                                <text> · Central: @pedido.AlmCentral.DescAlm</text>
+                            }
+                        </span>
+                    </span>
+                    <span class="r5-doc__derecha">
+                        <span class="r5-badge @(pedido.Estado == 0 ? "r5-badge--abierto" : "r5-badge--cerrado")">@pedido.DescEstado</span>
+                    </span>
+                </button>
+            }
+        </div>
+    }
+</div>
+</GuardiaModulo>
+
+@code {
+    private byte _estado;
+    private bool _cargando = true;
+    private string _error = "";
+    private List<PedidoCentral> _pedidos = new();
+
+    protected override Task OnInitializedAsync() => CargarAsync();
+
+    private Task CambiarEstadoAsync(byte estado)
+    {
+        if (_estado == estado) return Task.CompletedTask;
+        _estado = estado;
+        return CargarAsync();
+    }
+
+    private async Task CargarAsync()
+    {
+        if (!Sesion.Autenticado) return;
+
+        _cargando = true;
+        _error = "";
+        try
+        {
+            var respuesta = await Pedidos.GetPedidosAsync(
+                Sesion.Usuario!.Almacen.CodAlm, Sesion.Usuario.CodUsuario, _estado);
+            if (!respuesta.Ok)
+            {
+                _error = respuesta.Error;
+                _pedidos = new();
+                return;
+            }
+            _pedidos = respuesta.Datos ?? new();
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private void AbrirDetalle(PedidoCentral pedido)
+        => Nav.NavigateTo($"/pedidoCentral/{pedido.Fecha:yyyy-MM-dd}/{pedido.NumPedido}?estado={pedido.Estado}");
+}

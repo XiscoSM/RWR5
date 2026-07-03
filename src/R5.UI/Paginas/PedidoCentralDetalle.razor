@@ -1,0 +1,123 @@
+@* Detalle de un pedido a central: cabecera con contexto (número, fecha, estado)
+   y tabla de líneas con lo que el operario comprueba — producto, cajas/cantidad
+   pedidas y stock local vs central. Fase de consulta; el alta/edición vendrá después. *@
+@page "/pedidoCentral/{FechaRuta}/{NumPedido:int}"
+@inject PedidoCentralService Pedidos
+@inject SesionUsuario Sesion
+@inject NavigationManager Nav
+
+<GuardiaModulo CodMenu="19">
+<div class="r5-columna">
+
+    <div class="r5-fila">
+        <button class="r5-btn r5-btn--secundario" @onclick="Volver">← Pedidos</button>
+        <h2>Pedido @NumPedido · @(_fecha?.ToString("dd/MM/yyyy"))</h2>
+        @if (_estado is not null)
+        {
+            <span class="r5-badge @(_estado == 0 ? "r5-badge--abierto" : "r5-badge--cerrado")">@DescEstado</span>
+        }
+    </div>
+
+    @if (_fecha is null)
+    {
+        <Aviso Mensaje="La fecha del pedido no es válida." />
+    }
+    else if (_cargando)
+    {
+        <Cargando Texto="Cargando líneas…" />
+    }
+    else if (!string.IsNullOrEmpty(_error))
+    {
+        <Aviso Mensaje="@_error" />
+    }
+    else if (_lineas.Count == 0)
+    {
+        <div class="r5-cargando">
+            <Icono Nombre="pedido-central" Clase="r5-modulo__icono" />
+            <span>El pedido no tiene líneas.</span>
+        </div>
+    }
+    else
+    {
+        <div class="r5-tarjeta">
+            <table class="r5-tabla">
+                <thead>
+                    <tr>
+                        <th>Producto</th>
+                        <th class="num">Cajas</th>
+                        <th class="num">Cantidad</th>
+                        <th class="num">Stock alm.</th>
+                        <th class="num">Stock central</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var linea in _lineas)
+                    {
+                        <tr @key="linea.Prod.CodProd">
+                            <td>
+                                <div class="r5-doc__principal">
+                                    <span>@linea.Prod.DescProd</span>
+                                    <span class="r5-doc__detalle">@linea.Prod.CodProd</span>
+                                </div>
+                            </td>
+                            <td class="num">@linea.CajasPedidas</td>
+                            <td class="num">@Cantidad(linea.CantPedida, linea.Prod.DecimalesEnCant)</td>
+                            <td class="num">@Cantidad(linea.StockAlm, linea.Prod.DecimalesEnCant)</td>
+                            <td class="num">@Cantidad(linea.StockAlmCentral, linea.Prod.DecimalesEnCant)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <p class="r5-texto-suave r5-texto-sm">@_lineas.Count líneas.</p>
+    }
+</div>
+</GuardiaModulo>
+
+@code {
+    [Parameter] public string FechaRuta { get; set; } = "";
+    [Parameter] public int NumPedido { get; set; }
+
+    [SupplyParameterFromQuery(Name = "estado")]
+    public int? EstadoQuery { get; set; }
+
+    private DateTime? _fecha;
+    private byte? _estado;
+    private bool _cargando = true;
+    private string _error = "";
+    private List<PedidoCentralLin> _lineas = new();
+
+    private string DescEstado => new PedidoCentral { Estado = _estado ?? 255 }.DescEstado;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Sesion.Autenticado) return;
+
+        _estado = EstadoQuery is >= 0 and <= 255 ? (byte)EstadoQuery : null;
+        if (!DateTime.TryParseExact(FechaRuta, "yyyy-MM-dd", null,
+            System.Globalization.DateTimeStyles.None, out var fecha))
+        {
+            _fecha = null;
+            _cargando = false;
+            return;
+        }
+        _fecha = fecha;
+
+        try
+        {
+            var respuesta = await Pedidos.GetLineasAsync(Sesion.Usuario!.Almacen.CodAlm, fecha, NumPedido);
+            if (!respuesta.Ok)
+            {
+                _error = respuesta.Error;
+                return;
+            }
+            _lineas = respuesta.Datos ?? new();
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private void Volver() => Nav.NavigateTo("/pedidoCentral");
+}

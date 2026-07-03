@@ -470,6 +470,66 @@ h3 { font-size: var(--texto-lg); }
 
 .r5-tabla tr.destacada td { background: var(--c-primario-claro); font-weight: 600; }
 
+/* ---------- Segmento (filtro tipo pestañas) ---------- */
+.r5-segmento {
+    display: inline-flex;
+    background: var(--c-superficie);
+    border: 2px solid var(--c-borde);
+    border-radius: 999px;
+    padding: 3px;
+    gap: 2px;
+}
+
+.r5-segmento button {
+    min-height: 44px;
+    padding: 0 var(--esp-5);
+    border: none;
+    border-radius: 999px;
+    background: transparent;
+    font-family: inherit;
+    font-size: var(--texto-md);
+    font-weight: 600;
+    color: var(--c-texto-suave);
+    cursor: pointer;
+}
+
+.r5-segmento button.activo {
+    background: var(--c-primario);
+    color: #fff;
+}
+
+/* ---------- Lista de documentos (filas táctiles) ---------- */
+.r5-docs { display: flex; flex-direction: column; gap: var(--esp-3); }
+
+.r5-doc {
+    display: flex;
+    align-items: center;
+    gap: var(--esp-4);
+    width: 100%;
+    min-height: 72px;
+    padding: var(--esp-4) var(--esp-5);
+    background: var(--c-superficie);
+    border: none;
+    border-radius: var(--radio);
+    box-shadow: var(--sombra-1);
+    font-family: inherit;
+    font-size: var(--texto-md);
+    color: var(--c-texto);
+    cursor: pointer;
+    text-align: left;
+    transition: box-shadow 0.12s, transform 0.12s;
+}
+
+.r5-doc:active { transform: scale(0.99); box-shadow: var(--sombra-2); }
+
+.r5-doc__principal { display: flex; flex-direction: column; gap: var(--esp-1); min-width: 0; }
+.r5-doc__titulo { font-weight: 600; font-size: var(--texto-lg); }
+.r5-doc__detalle { color: var(--c-texto-suave); font-size: var(--texto-sm); }
+.r5-doc__derecha { margin-left: auto; display: flex; align-items: center; gap: var(--esp-3); flex-shrink: 0; }
+
+.r5-badge--abierto { background: var(--c-exito-fondo); color: var(--c-exito); }
+.r5-badge--cerrado { background: var(--c-primario-claro); color: var(--c-primario-osc); }
+
 /* ---------- Utilidades ---------- */
 .r5-fila { display: flex; gap: var(--esp-4); align-items: center; }
 .r5-columna { display: flex; flex-direction: column; gap: var(--esp-4); }
