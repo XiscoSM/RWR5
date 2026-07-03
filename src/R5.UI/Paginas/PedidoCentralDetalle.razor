@@ -3,6 +3,8 @@
    pedidas y stock local vs central. Fase de consulta; el alta/edición vendrá después. *@
 @page "/pedidoCentral/{FechaRuta}/{NumPedido:int}"
 @inject PedidoCentralService Pedidos
+@inject ReportService Reports
+@inject IVisorArchivos Visor
 @inject SesionUsuario Sesion
 @inject NavigationManager Nav
 
@@ -16,7 +18,14 @@
         {
             <span class="r5-badge @(_estado == 0 ? "r5-badge--abierto" : "r5-badge--cerrado")">@DescEstado</span>
         }
+        <button class="r5-btn r5-btn--primario" style="margin-left:auto" @onclick="AbrirPdfAsync"
+                disabled="@(_generandoPdf || _fecha is null)">
+            <Icono Nombre="informes" Clase="r5-barra__icono" />
+            @(_generandoPdf ? "Generando…" : "PDF")
+        </button>
     </div>
+
+    <Aviso Mensaje="@_errorPdf" />
 
     @if (_fecha is null)
     {
@@ -81,6 +90,9 @@
     [SupplyParameterFromQuery(Name = "estado")]
     public int? EstadoQuery { get; set; }
 
+    [SupplyParameterFromQuery(Name = "almCentral")]
+    public int? AlmCentralQuery { get; set; }
+
     private DateTime? _fecha;
     private byte? _estado;
     private bool _cargando = true;
@@ -88,6 +100,36 @@
     private List<PedidoCentralLin> _lineas = new();
 
     private string DescEstado => new PedidoCentral { Estado = _estado ?? 255 }.DescEstado;
+
+    private bool _generandoPdf;
+    private string _errorPdf = "";
+
+    private async Task AbrirPdfAsync()
+    {
+        if (_generandoPdf || _fecha is null) return;
+
+        _generandoPdf = true;
+        _errorPdf = "";
+        try
+        {
+            var respuesta = await Reports.GetPedidoCentralPdfAsync(
+                NumPedido, _fecha.Value, _estado ?? 1, (short)(AlmCentralQuery ?? 0));
+            if (!respuesta.Ok || respuesta.Datos is null)
+            {
+                _errorPdf = respuesta.Error;
+                return;
+            }
+            await Visor.AbrirAsync($"PedidoCentral_{NumPedido}.pdf", respuesta.Datos);
+        }
+        catch (Exception ex)
+        {
+            _errorPdf = "No se pudo abrir el PDF: " + ex.Message;
+        }
+        finally
+        {
+            _generandoPdf = false;
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {

@@ -18,6 +18,10 @@ public sealed class ReportService
     /// <summary>GET Report/Traspaso/{num}/{fecha} — PDF del documento de traspaso.</summary>
     public Task<ApiRespuesta<byte[]>> GetTraspasoPdfAsync(int numTraspaso, DateTime fecha, CancellationToken ct = default)
         => _api.GetBytesAsync($"Report/Traspaso/{numTraspaso}/{fecha:yyyy-MM-dd}", ct);
+
+    /// <summary>GET Report/PedidoCentral/{num}/{fecha} — PDF del documento de pedido a central.</summary>
+    public Task<ApiRespuesta<byte[]>> GetPedidoCentralPdfAsync(int numPedido, DateTime fecha, byte estado, short almCentral, bool vertical = false, CancellationToken ct = default)
+        => _api.GetBytesAsync($"Report/PedidoCentral/{numPedido}/{fecha:yyyy-MM-dd}?estado={estado}&almCentral={almCentral}&vertical={vertical}", ct);
 }
 
 /// <summary>Abre un archivo en el visor de la plataforma (impl. en el host MAUI).</summary>

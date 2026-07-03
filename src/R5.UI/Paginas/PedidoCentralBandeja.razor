@@ -100,5 +100,5 @@
     }
 
     private void AbrirDetalle(PedidoCentral pedido)
-        => Nav.NavigateTo($"/pedidoCentral/{pedido.Fecha:yyyy-MM-dd}/{pedido.NumPedido}?estado={pedido.Estado}");
+        => Nav.NavigateTo($"/pedidoCentral/{pedido.Fecha:yyyy-MM-dd}/{pedido.NumPedido}?estado={pedido.Estado}&almCentral={pedido.AlmCentral?.CodAlm ?? 0}");
 }
