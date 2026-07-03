@@ -1,0 +1,52 @@
+@* Inicio: rejilla de módulos según permisos del usuario (menús de la API).
+   Tesela grande táctil con icono; lo no implementado se ve deshabilitado con
+   "próximamente" para que el usuario sepa qué llegará sin poder perderse. *@
+@page "/"
+@page "/inicio"
+@inject SesionUsuario Sesion
+@inject NavigationManager Nav
+
+@if (Sesion.Autenticado)
+{
+    @if (_modulos.Count == 0)
+    {
+        <div class="r5-cargando">
+            <Icono Nombre="info" Clase="r5-modulo__icono" />
+            <span>Este usuario no tiene módulos asignados. Revisa sus permisos en RW.</span>
+        </div>
+    }
+    else
+    {
+        <div class="r5-modulos">
+            @foreach (var modulo in _modulos)
+            {
+                <button @key="modulo.CodMenu" class="r5-modulo" disabled="@(!modulo.Implementado)"
+                        @onclick="() => Abrir(modulo)">
+                    <Icono Nombre="@modulo.Icono" Clase="r5-modulo__icono" />
+                    <span>@modulo.Titulo</span>
+                    @if (!modulo.Implementado)
+                    {
+                        <span class="r5-modulo__pronto">Próximamente</span>
+                    }
+                </button>
+            }
+        </div>
+    }
+}
+
+@code {
+    private IReadOnlyList<ModuloApp> _modulos = Array.Empty<ModuloApp>();
+
+    protected override void OnInitialized()
+    {
+        if (Sesion.Autenticado)
+        {
+            _modulos = CatalogoModulos.ParaUsuario(Sesion.Usuario!.Menus);
+        }
+    }
+
+    private void Abrir(ModuloApp modulo)
+    {
+        if (modulo.Implementado) Nav.NavigateTo(modulo.Ruta);
+    }
+}

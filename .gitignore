@@ -1,0 +1,20 @@
+## .NET / MAUI
+bin/
+obj/
+*.user
+*.suo
+
+## Visual Studio / Rider / VS Code
+.vs/
+.idea/
+*.DotSettings.user
+
+## Compilados y paquetes
+*.apk
+*.aab
+*.msix
+*.nupkg
+
+## Logs y temporales
+*.log
+*.tmp

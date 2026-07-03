@@ -1,0 +1,192 @@
+@* Ajustes: puesta en marcha del dispositivo en 3 pasos verificables —
+   1) elegir entorno/URL y probarla (ApiInfo), 2) terminal, 3) enrolar (api-key).
+   Cada paso da feedback inmediato; sin esto el login no puede funcionar. *@
+@page "/ajustes"
+@inject ConfiguracionApp Config
+@inject RepositorioConfiguracion RepoConfig
+@inject CredencialesApi Credenciales
+@inject DispositivoService Dispositivo
+@inject NavigationManager Nav
+
+<div class="r5-columna r5-ancho-form">
+
+    <section class="r5-tarjeta r5-columna">
+        <h2>Conexión con la API</h2>
+
+        <div class="r5-campo">
+            <label for="entorno">Entorno</label>
+            <select id="entorno" class="r5-select" @bind="_entorno">
+                <option value="@EntornoApi.Produccion">Producción</option>
+                <option value="@EntornoApi.Beta">Beta</option>
+                <option value="@EntornoApi.Desarrollo">Desarrollo</option>
+                <option value="@EntornoApi.Local">Local (localhost:7049)</option>
+                <option value="@EntornoApi.Personalizado">Personalizado</option>
+            </select>
+        </div>
+
+        @if (_entorno == EntornoApi.Personalizado)
+        {
+            <div class="r5-campo">
+                <label for="urlPersonalizada">URL de la API (termina en /api)</label>
+                <input id="urlPersonalizada" class="r5-input" type="url" @bind="_urlPersonalizada"
+                       placeholder="https://servidor/api" />
+            </div>
+        }
+        else
+        {
+            <p class="r5-texto-suave r5-texto-sm">URL: @UrlEntorno(_entorno)</p>
+        }
+
+        <div class="r5-fila">
+            <button class="r5-btn r5-btn--secundario" @onclick="ProbarConexionAsync" disabled="@_probando">
+                @(_probando ? "Probando…" : "Probar conexión")
+            </button>
+        </div>
+
+        <Aviso Tipo="@_tipoAvisoConexion" Mensaje="@_avisoConexion" />
+    </section>
+
+    <section class="r5-tarjeta r5-columna">
+        <h2>Terminal</h2>
+        <div class="r5-campo">
+            <label for="terminal">Número de terminal (1-254)</label>
+            <input id="terminal" class="r5-input r5-input--numero" type="number" inputmode="numeric"
+                   min="1" max="254" @bind="_numTerminal" />
+        </div>
+    </section>
+
+    <section class="r5-tarjeta r5-columna">
+        <h2>Enrolamiento del dispositivo</h2>
+
+        @if (Credenciales.Enrolado)
+        {
+            <Aviso Tipo="exito" Mensaje="@($"Dispositivo enrolado con Id {Credenciales.DeviceId}.")" />
+            <p class="r5-texto-suave r5-texto-sm">
+                Para re-enrolar (p. ej. tras revocar la clave en el servidor), introduce el Id y vuelve a enrolar.
+            </p>
+        }
+        else
+        {
+            <Aviso Tipo="info" Mensaje="Sin enrolar: la API rechazará las llamadas. Necesitas el Id de hardware dado de alta en el servidor." />
+        }
+
+        <div class="r5-campo">
+            <label for="idHard">Id de hardware (IdHard)</label>
+            <input id="idHard" class="r5-input r5-input--numero" type="number" inputmode="numeric"
+                   @bind="_idHard" />
+        </div>
+
+        <div class="r5-fila">
+            <button class="r5-btn r5-btn--primario" @onclick="EnrolarAsync"
+                    disabled="@(_enrolando || _idHard is null or <= 0)">
+                @(_enrolando ? "Enrolando…" : "Enrolar dispositivo")
+            </button>
+        </div>
+
+        <Aviso Tipo="@_tipoAvisoEnrolar" Mensaje="@_avisoEnrolar" />
+    </section>
+
+    <div class="r5-fila">
+        <button class="r5-btn r5-btn--primario" @onclick="GuardarYSalir">Guardar</button>
+        <button class="r5-btn r5-btn--fantasma" @onclick="Salir">Cancelar</button>
+    </div>
+</div>
+
+@code {
+    private EntornoApi _entorno;
+    private string _urlPersonalizada = "";
+    private short _numTerminal;
+    private int? _idHard;
+
+    private bool _probando;
+    private string _avisoConexion = "";
+    private string _tipoAvisoConexion = "info";
+
+    private bool _enrolando;
+    private string _avisoEnrolar = "";
+    private string _tipoAvisoEnrolar = "info";
+
+    protected override void OnInitialized()
+    {
+        _entorno = Config.Entorno;
+        _urlPersonalizada = Config.UrlPersonalizada;
+        _numTerminal = Config.NumTerminal;
+        if (Config.DeviceId > 0) _idHard = Config.DeviceId;
+    }
+
+    private static string UrlEntorno(EntornoApi entorno)
+        => new ConfiguracionApp { Entorno = entorno }.UrlApi;
+
+    // Aplica los cambios de pantalla a la config viva (la usa ApiWeb al componer URLs).
+    private void AplicarConfig()
+    {
+        Config.Entorno = _entorno;
+        Config.UrlPersonalizada = _urlPersonalizada.Trim();
+        if (_numTerminal is > 0 and < 255) Config.NumTerminal = _numTerminal;
+    }
+
+    private async Task ProbarConexionAsync()
+    {
+        _probando = true;
+        _avisoConexion = "";
+        try
+        {
+            AplicarConfig();
+            var respuesta = await Dispositivo.ProbarApiAsync();
+            if (respuesta.Ok && respuesta.Datos is not null)
+            {
+                _tipoAvisoConexion = "exito";
+                _avisoConexion = $"Conectado: {respuesta.Datos.ApiName} v{respuesta.Datos.Version} · {respuesta.Datos.Empresa} · BD {respuesta.Datos.BaseDatos}"
+                    + (respuesta.Datos.Desarrollo ? " · DESARROLLO" : "");
+            }
+            else
+            {
+                _tipoAvisoConexion = "error";
+                _avisoConexion = respuesta.Error;
+            }
+        }
+        finally
+        {
+            _probando = false;
+        }
+    }
+
+    private async Task EnrolarAsync()
+    {
+        if (_idHard is null or <= 0) return;
+
+        _enrolando = true;
+        _avisoEnrolar = "";
+        try
+        {
+            AplicarConfig();
+            var respuesta = await Dispositivo.EnrolarAsync(_idHard.Value);
+            if (respuesta.Ok)
+            {
+                _tipoAvisoEnrolar = "exito";
+                _avisoEnrolar = "Dispositivo enrolado correctamente.";
+            }
+            else
+            {
+                _tipoAvisoEnrolar = "error";
+                // 409 = ya enrolado: mensaje accionable en vez del texto crudo del servidor.
+                _avisoEnrolar = respuesta.Codigo == System.Net.HttpStatusCode.Conflict
+                    ? "Este Id ya está enrolado. Hay que revocar la clave en el servidor antes de re-enrolar."
+                    : respuesta.Error;
+            }
+        }
+        finally
+        {
+            _enrolando = false;
+        }
+    }
+
+    private void GuardarYSalir()
+    {
+        AplicarConfig();
+        RepoConfig.Guardar(Config);
+        Salir();
+    }
+
+    private void Salir() => Nav.NavigateTo("/login");
+}

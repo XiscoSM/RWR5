@@ -1,0 +1,114 @@
+@* Barra superior fija con contexto permanente (página, almacén, usuario, conexión)
+   y contenido desplazable debajo. Protege las páginas: sin sesión → Login. *@
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject SesionUsuario Sesion
+@inject IEstadoRed EstadoRed
+@inject NavigationManager Nav
+
+<div class="r5-shell">
+    <header class="r5-barra">
+        <span class="r5-barra__titulo">@_titulo</span>
+
+        <div class="r5-barra__derecha">
+            @if (!_hayInternet)
+            {
+                <span class="r5-chip" title="Sin conexión">
+                    <Icono Nombre="sin-conexion" Clase="r5-barra__icono" />
+                </span>
+            }
+            @if (Sesion.Autenticado)
+            {
+                <span class="r5-chip" title="Almacén activo">
+                    <Icono Nombre="almacen" Clase="r5-barra__icono" />
+                    @Sesion.Usuario!.Almacen.CodAlm · @Sesion.Usuario.Almacen.DescAlm
+                </span>
+                <span class="r5-chip" title="Usuario">
+                    <Icono Nombre="usuario" Clase="r5-barra__icono" />
+                    @Sesion.Usuario.DescUsuario
+                </span>
+                <button class="r5-btn r5-btn--fantasma r5-barra__salir" title="Cerrar sesión" @onclick="CerrarSesion">
+                    <Icono Nombre="salir" Clase="r5-barra__icono" />
+                </button>
+            }
+        </div>
+    </header>
+
+    @if (!_hayInternet)
+    {
+        <div class="r5-sin-conexion">Sin conexión — comprueba la red. Los datos no se pueden cargar ni guardar.</div>
+    }
+
+    <main class="r5-contenido">
+        @Body
+    </main>
+</div>
+
+@code {
+    private bool _hayInternet = true;
+    private string _titulo = "RW R5";
+
+    protected override void OnInitialized()
+    {
+        _hayInternet = EstadoRed.HayInternet;
+        EstadoRed.CambioConectividad += AlCambiarConectividad;
+        Sesion.Cambio += AlCambiarSesion;
+        Nav.LocationChanged += AlNavegar;
+        ActualizarTitulo();
+        ExigirSesion();
+    }
+
+    protected override void OnParametersSet() => ExigirSesion();
+
+    private void ExigirSesion()
+    {
+        // Ajustes queda accesible sin sesión: es donde se configura URL y enrolamiento.
+        string ruta = Nav.ToBaseRelativePath(Nav.Uri).TrimEnd('/').ToLowerInvariant();
+        bool publica = ruta is "login" or "ajustes";
+        if (!Sesion.Autenticado && !publica)
+        {
+            Nav.NavigateTo("/login", replace: true);
+        }
+    }
+
+    private void ActualizarTitulo()
+    {
+        string ruta = Nav.ToBaseRelativePath(Nav.Uri).TrimEnd('/').ToLowerInvariant();
+        _titulo = ruta switch
+        {
+            "" or "inicio" => "Inicio",
+            "ajustes" => "Ajustes",
+            _ => "RW R5"
+        };
+        // Las páginas de módulo fijan su propio título vía CascadingValue en el futuro;
+        // de momento el catálogo es corto y el switch basta.
+    }
+
+    private void AlNavegar(object? s, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        ActualizarTitulo();
+        ExigirSesion();
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void AlCambiarConectividad(object? s, bool hayInternet)
+    {
+        _hayInternet = hayInternet;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void AlCambiarSesion() => InvokeAsync(StateHasChanged);
+
+    private void CerrarSesion()
+    {
+        Sesion.CerrarSesion();
+        Nav.NavigateTo("/login", replace: true);
+    }
+
+    public void Dispose()
+    {
+        EstadoRed.CambioConectividad -= AlCambiarConectividad;
+        Sesion.Cambio -= AlCambiarSesion;
+        Nav.LocationChanged -= AlNavegar;
+    }
+}

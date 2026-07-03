@@ -1,0 +1,12 @@
+@* Indicador de carga a pantalla/bloque, con texto opcional. *@
+<div class="r5-cargando" role="status">
+    <div class="r5-spinner"></div>
+    @if (!string.IsNullOrEmpty(Texto))
+    {
+        <span>@Texto</span>
+    }
+</div>
+
+@code {
+    [Parameter] public string Texto { get; set; } = "";
+}

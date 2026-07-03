@@ -1,0 +1,22 @@
+@* Aviso inline (error / éxito / info) con icono; se oculta si no hay mensaje. *@
+@if (!string.IsNullOrWhiteSpace(Mensaje))
+{
+    <div class="r5-aviso r5-aviso--@Tipo" role="@(Tipo == "error" ? "alert" : "status")">
+        <Icono Nombre="@_icono" Clase="r5-aviso__icono" />
+        <span>@Mensaje</span>
+    </div>
+}
+
+@code {
+    [Parameter] public string Mensaje { get; set; } = "";
+
+    /// <summary>"error", "exito" o "info".</summary>
+    [Parameter] public string Tipo { get; set; } = "error";
+
+    private string _icono => Tipo switch
+    {
+        "exito" => "ok",
+        "info" => "info",
+        _ => "error"
+    };
+}
