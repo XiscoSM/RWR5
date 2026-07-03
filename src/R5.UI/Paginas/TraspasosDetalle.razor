@@ -1,6 +1,8 @@
 @* Detalle de traspaso: líneas con cantidades pedidas vs enviadas e importe. Consulta. *@
 @page "/traspasos/{FechaRuta}/{NumTraspaso:int}"
 @inject TraspasoService Traspasos
+@inject ReportService Reports
+@inject IVisorArchivos Visor
 @inject SesionUsuario Sesion
 @inject NavigationManager Nav
 
@@ -10,7 +12,14 @@
     <div class="r5-fila">
         <button class="r5-btn r5-btn--secundario" @onclick="Volver">← Traspasos</button>
         <h2>Traspaso @NumTraspaso · @(_fecha?.ToString("dd/MM/yyyy"))</h2>
+        <button class="r5-btn r5-btn--primario" style="margin-left:auto" @onclick="AbrirPdfAsync"
+                disabled="@(_generandoPdf || _fecha is null)">
+            <Icono Nombre="informes" Clase="r5-barra__icono" />
+            @(_generandoPdf ? "Generando…" : "PDF")
+        </button>
     </div>
+
+    <Aviso Mensaje="@_errorPdf" />
 
     @if (_fecha is null)
     {
@@ -78,6 +87,36 @@
     private bool _cargando = true;
     private string _error = "";
     private List<TraspasoLin> _lineas = new();
+
+    private bool _generandoPdf;
+    private string _errorPdf = "";
+
+    // El PDF se renderiza en el servidor con el mismo .rdlc de R3; aquí solo se abre.
+    private async Task AbrirPdfAsync()
+    {
+        if (_generandoPdf || _fecha is null) return;
+
+        _generandoPdf = true;
+        _errorPdf = "";
+        try
+        {
+            var respuesta = await Reports.GetTraspasoPdfAsync(NumTraspaso, _fecha.Value);
+            if (!respuesta.Ok || respuesta.Datos is null)
+            {
+                _errorPdf = respuesta.Error;
+                return;
+            }
+            await Visor.AbrirAsync($"Traspaso_{NumTraspaso}.pdf", respuesta.Datos);
+        }
+        catch (Exception ex)
+        {
+            _errorPdf = "No se pudo abrir el PDF: " + ex.Message;
+        }
+        finally
+        {
+            _generandoPdf = false;
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {

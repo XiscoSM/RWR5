@@ -38,6 +38,38 @@ public sealed class ApiWeb
         return respuesta;
     }
 
+    /// <summary>GET de contenido binario (PDF de informes, etc.).</summary>
+    public async Task<ApiRespuesta<byte[]>> GetBytesAsync(string rutaRelativa, CancellationToken ct = default)
+    {
+        string url = "";
+        try
+        {
+            url = Url(rutaRelativa);
+            using var respuesta = await _http.GetAsync(url, ct);
+            if (respuesta.StatusCode == HttpStatusCode.OK)
+            {
+                byte[] datos = await respuesta.Content.ReadAsByteArrayAsync(ct);
+                return ApiRespuesta<byte[]>.Exito(datos, respuesta.StatusCode);
+            }
+            string error = await LeerErrorAsync(respuesta, url, ct);
+            return ApiRespuesta<byte[]>.Fallo(error, respuesta.StatusCode);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            return ApiRespuesta<byte[]>.Fallo("Operación cancelada.");
+        }
+        catch (Exception ex) when (EsFalloDeRed(ex))
+        {
+            _logger.LogError(ex, "Sin conexión {Url}", url);
+            return ApiRespuesta<byte[]>.Fallo("No hay conexión con el servidor.", sinConexion: true);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error inesperado {Url}", url);
+            return ApiRespuesta<byte[]>.Fallo("Error inesperado: " + ex.Message);
+        }
+    }
+
     public Task<ApiRespuesta<T>> PostAsync<T>(string rutaRelativa, object? cuerpo, CancellationToken ct = default)
         => EnviarAsync<T>(() => new HttpRequestMessage(HttpMethod.Post, Url(rutaRelativa))
         {
