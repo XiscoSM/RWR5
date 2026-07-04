@@ -22,7 +22,7 @@ public static class CatalogoModulos
         [8] = new(8, "Pedido proveedor", "/pedidoCompra", "pedido-compra", true),
         [9] = new(9, "Recepción albaranes", "/recepcionAlb", "recepcion", true),
         [11] = new(11, "Traspasos", "/traspasos", "traspasos", true),
-        [12] = new(12, "Etiquetas", "/etiquetas", "etiquetas", false),
+        [12] = new(12, "Etiquetas", "/etiquetas", "etiquetas", true),
         [19] = new(19, "Pedido central", "/pedidoCentral", "pedido-central", true),
         [22] = new(22, "Informes", "/informes", "informes", true),
         [24] = new(24, "Preparación", "/preparacion", "preparacion", true),

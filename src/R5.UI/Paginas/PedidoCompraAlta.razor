@@ -1,0 +1,340 @@
+@* Alta de pedido a proveedor: proveedor/condición por escaneo (como en recepción),
+   fecha prevista de envío, y líneas encadenadas con precio y stock a la vista.
+   La cabecera se crea al añadir la primera línea; al final Registrar y, si el
+   proveedor tiene mail, encolar el envío. *@
+@page "/pedidoCompra/alta"
+@inject PedidoCompraService Pedidos
+@inject ProveedorService Proveedores
+@inject SesionUsuario Sesion
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<GuardiaModulo CodMenu="8">
+<div class="r5-columna">
+
+    <div class="r5-fila">
+        <button class="r5-btn r5-btn--secundario" @onclick="Volver">← Pedidos</button>
+        <h2>Nuevo pedido a proveedor</h2>
+        @if (_numPedido > 0)
+        {
+            <div class="r5-fila" style="margin-left:auto">
+                <span class="r5-chip" style="background: var(--c-primario-claro); color: var(--c-primario-osc);">
+                    Pedido @_numPedido · @_lineasAnadidas líneas
+                </span>
+                <button class="r5-btn r5-btn--primario" @onclick="RegistrarAsync" disabled="@_registrando">
+                    @(_registrando ? "Registrando…" : "Registrar pedido")
+                </button>
+            </div>
+        }
+    </div>
+
+    @if (_gamaElegida is null)
+    {
+        <div class="r5-tarjeta r5-columna r5-ancho-form">
+            <h3>Proveedor</h3>
+            <form @onsubmit="BuscarProveedorAsync" class="r5-buscador">
+                <input id="busquedaProvPed" class="r5-input" type="text" inputmode="numeric"
+                       placeholder="Escanea un producto del proveedor o teclea su código"
+                       @bind="_codigoProv" @bind:event="oninput" autofocus disabled="@_ocupado" />
+                <button type="submit" class="r5-btn r5-btn--primario" disabled="@(_ocupado || string.IsNullOrWhiteSpace(_codigoProv))">
+                    Buscar
+                </button>
+            </form>
+
+            <Aviso Mensaje="@(_tipoAviso == "error" ? _aviso : "")" />
+
+            @if (_gamas.Count > 0)
+            {
+                <h3>Elige la condición de compra</h3>
+                <div class="r5-docs">
+                    @foreach (var gama in _gamas)
+                    {
+                        <button @key="@($"{gama.CodProv}-{gama.Gama.CodGama}")" class="r5-doc" @onclick="() => ElegirGama(gama)">
+                            <Icono Nombre="pedido-compra" Clase="r5-modulo__icono" />
+                            <span class="r5-doc__principal">
+                                <span class="r5-doc__titulo">@gama.DescProv</span>
+                                <span class="r5-doc__detalle">Prov. @gama.CodProv · Gama @gama.Gama.CodGama · @gama.Gama.DescGama</span>
+                            </span>
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="r5-tarjeta r5-columna">
+            <div class="r5-fila" style="flex-wrap: wrap;">
+                <span class="r5-texto-suave">Proveedor:</span>
+                <strong>@_gamaElegida.DescProv · Gama @_gamaElegida.Gama.CodGama</strong>
+                @if (_numPedido == 0)
+                {
+                    <button class="r5-btn r5-btn--fantasma" @onclick="CambiarProveedor">Cambiar</button>
+                }
+                <div class="r5-campo" style="margin-left:auto; min-width: 200px;">
+                    <label for="fechaPrevEnvio">Fecha prevista de envío</label>
+                    <input id="fechaPrevEnvio" class="r5-input" type="date" @bind="_fechaPrevEnvio" />
+                </div>
+            </div>
+
+            <form @onsubmit="BuscarProductoAsync" class="r5-buscador">
+                <input id="busquedaPedProv" class="r5-input" type="text" inputmode="numeric"
+                       placeholder="Escanea un EAN o teclea el código de producto"
+                       @bind="_codigo" @bind:event="oninput" disabled="@_ocupado" />
+                <button type="submit" class="r5-btn r5-btn--primario" disabled="@(_ocupado || string.IsNullOrWhiteSpace(_codigo))">
+                    Buscar
+                </button>
+            </form>
+        </div>
+
+        <Aviso Tipo="@_tipoAviso" Mensaje="@_aviso" />
+
+        @if (_ocupado)
+        {
+            <Cargando />
+        }
+        else if (_linea is not null)
+        {
+            <div class="r5-tarjeta r5-columna">
+                <div class="r5-ficha__identidad">
+                    <span class="r5-ficha__codigo">@_linea.Prod.CodProd</span>
+                    <span class="r5-ficha__nombre">@_linea.Prod.DescProd</span>
+                </div>
+
+                <dl class="r5-datos">
+                    <div><dt>Precio tarifa</dt><dd>@Moneda(_linea.PTarifa)</dd></div>
+                    <div><dt>Precio neto (PNC)</dt><dd>@Moneda(_linea.PNC)</dd></div>
+                    <div><dt>Unidades por caja</dt><dd>@UnidsCaja</dd></div>
+                    <div><dt>Stock actual</dt><dd>@Cantidad(_linea.Stock, _linea.Prod.DecimalesEnCant)</dd></div>
+                </dl>
+
+                <div class="r5-fila">
+                    <div class="r5-campo" style="flex:1">
+                        <label for="cajasPed">Cajas</label>
+                        <input id="cajasPed" class="r5-input r5-input--numero" type="number" inputmode="numeric" min="0"
+                               value="@_cajas" @oninput="CambioCajas" />
+                    </div>
+                    <div class="r5-campo" style="flex:1">
+                        <label for="cantPed">Cantidad</label>
+                        <input id="cantPed" class="r5-input r5-input--numero" type="number" inputmode="decimal"
+                               step="@(_linea.Prod.DecimalesEnCant ? "0.001" : "1")" min="0"
+                               @bind="_cantidad" @bind:event="oninput" />
+                    </div>
+                </div>
+
+                <button class="r5-btn r5-btn--primario r5-btn--bloque" @onclick="AnadirAsync"
+                        disabled="@(_anadiendo || _cantidad <= 0)">
+                    @(_anadiendo ? "Añadiendo…" : $"Añadir {Cantidad(_cantidad, _linea.Prod.DecimalesEnCant)} al pedido")
+                </button>
+            </div>
+        }
+    }
+</div>
+</GuardiaModulo>
+
+@code {
+    private string _codigoProv = "";
+    private List<Proveedor> _gamas = new();
+    private Proveedor? _gamaElegida;
+
+    private string _codigo = "";
+    private bool _ocupado;
+    private bool _anadiendo;
+    private bool _registrando;
+    private string _aviso = "";
+    private string _tipoAviso = "error";
+
+    private PedidoCompraLin? _linea;
+    private long _eanEscaneado;
+    private short _cajas;
+    private decimal _cantidad;
+    private int _numPedido;
+    private int _lineasAnadidas;
+    private readonly DateTime _fecha = DateTime.Today;
+    private DateTime _fechaPrevEnvio = DateTime.Today.AddDays(1);
+
+    private short UnidsCaja => _linea is null ? (short)1
+        : (_linea.Ean.UnidCaja > 1 ? _linea.Ean.UnidCaja : (_linea.Prod.UnidsCaja > 0 ? _linea.Prod.UnidsCaja : (short)1));
+
+    private async Task BuscarProveedorAsync()
+    {
+        string codigo = _codigoProv.Trim();
+        if (_ocupado || codigo.Length == 0) return;
+
+        _ocupado = true;
+        _aviso = "";
+        _gamas = new();
+        try
+        {
+            ApiRespuesta<List<Proveedor>> respuesta;
+            if (codigo.Length >= 8 && long.TryParse(codigo, out long ean))
+            {
+                respuesta = await Proveedores.GetGamasPorEanAsync(ean);
+            }
+            else if (int.TryParse(codigo, out int codProv) && codProv > 0)
+            {
+                respuesta = await Proveedores.GetGamasPorProvAsync(codProv);
+            }
+            else
+            {
+                MostrarError("Introduce un EAN o un código de proveedor numérico.");
+                return;
+            }
+
+            if (!respuesta.Ok || respuesta.Datos is null) { MostrarError(respuesta.Error); return; }
+            if (respuesta.Datos.Count == 0) { MostrarError("Sin condiciones de compra para ese código."); return; }
+
+            _gamas = respuesta.Datos;
+            if (_gamas.Count == 1) ElegirGama(_gamas[0]);
+        }
+        finally
+        {
+            _ocupado = false;
+        }
+    }
+
+    private void ElegirGama(Proveedor gama)
+    {
+        _gamaElegida = gama;
+        _aviso = "";
+    }
+
+    private void CambiarProveedor()
+    {
+        _gamaElegida = null;
+        _gamas = new();
+        _linea = null;
+        _aviso = "";
+    }
+
+    private void CambioCajas(ChangeEventArgs e)
+    {
+        if (short.TryParse(e.Value?.ToString(), out short cajas) && cajas >= 0)
+        {
+            _cajas = cajas;
+            _cantidad = cajas * UnidsCaja;
+        }
+    }
+
+    private async Task BuscarProductoAsync()
+    {
+        string codigo = _codigo.Trim();
+        if (_ocupado || codigo.Length == 0 || _gamaElegida is null || !Sesion.Autenticado) return;
+
+        _ocupado = true;
+        _aviso = "";
+        _linea = null;
+        _eanEscaneado = 0;
+        try
+        {
+            short codAlm = Sesion.Usuario!.Almacen.CodAlm;
+
+            int codProd = 0;
+            long codEan = 0;
+            if (codigo.Length >= 8 && long.TryParse(codigo, out long ean)) codEan = ean;
+            else if (int.TryParse(codigo, out int cod) && cod > 0) codProd = cod;
+            else { MostrarError("Introduce un código numérico (producto o EAN)."); return; }
+
+            var respuesta = await Pedidos.GetProductoAsync(_numPedido, _fecha,
+                _gamaElegida.CodProv, _gamaElegida.Gama.CodGama, codProd, codEan, codAlm);
+            if (!respuesta.Ok || respuesta.Datos is null) { MostrarError(respuesta.Error); return; }
+            if (respuesta.Datos.Prod.CodProd <= 0) { MostrarError($"El código {codigo} no corresponde a ningún producto de esta gama."); return; }
+
+            _linea = respuesta.Datos;
+            _eanEscaneado = codEan;
+            _cajas = 1;
+            _cantidad = UnidsCaja;
+        }
+        finally
+        {
+            _ocupado = false;
+            StateHasChanged();
+            await JS.InvokeVoidAsync("r5.seleccionar", "busquedaPedProv");
+        }
+    }
+
+    private async Task AnadirAsync()
+    {
+        if (_anadiendo || _linea is null || _gamaElegida is null || _cantidad <= 0) return;
+
+        _anadiendo = true;
+        _aviso = "";
+        try
+        {
+            // La primera línea necesita cabecera: se crea aquí y devuelve el número de pedido.
+            if (_numPedido == 0)
+            {
+                var cabecera = new PedidoCompraInsertDTO
+                {
+                    NumPedido = 0,
+                    Fecha = _fecha,
+                    FechaPrevEnvio = _fechaPrevEnvio,
+                    CodProv = _gamaElegida.CodProv,
+                    CodGama = _gamaElegida.Gama.CodGama,
+                    CodUsuario = Sesion.Usuario!.CodUsuario,
+                    CodAlm = Sesion.Usuario.Almacen.CodAlm
+                };
+                var alta = await Pedidos.PostCabeceraAsync(cabecera);
+                if (!alta.Ok || alta.Datos <= 0) { MostrarError(alta.Error); return; }
+                _numPedido = alta.Datos;
+            }
+
+            var lineaDto = new PedidoCompraLinInsertDTO
+            {
+                NumPedido = _numPedido,
+                Fecha = _fecha,
+                CodProv = _gamaElegida.CodProv,
+                CodGama = _gamaElegida.Gama.CodGama,
+                CodProd = _linea.Prod.CodProd,
+                CodEan = _eanEscaneado,
+                CodProdProv = "",
+                CodUsuario = Sesion.Usuario!.CodUsuario,
+                Cant = _cantidad,
+                Cajas = _cajas,
+                CodAlm = Sesion.Usuario.Almacen.CodAlm
+            };
+            var respuesta = await Pedidos.PostLineaAsync(lineaDto);
+            if (!respuesta.Ok) { MostrarError(respuesta.Error); return; }
+
+            _lineasAnadidas++;
+            _tipoAviso = "exito";
+            _aviso = $"{_linea.Prod.DescProd}: {Cantidad(_cantidad, _linea.Prod.DecimalesEnCant)} añadido al pedido {_numPedido}.";
+            _linea = null;
+            _codigo = "";
+        }
+        finally
+        {
+            _anadiendo = false;
+            StateHasChanged();
+            await JS.InvokeVoidAsync("r5.seleccionar", "busquedaPedProv");
+        }
+    }
+
+    // Registrar el pedido: irreversible desde la app (queda listo para enviar al proveedor).
+    private async Task RegistrarAsync()
+    {
+        if (_registrando || _numPedido <= 0) return;
+
+        _registrando = true;
+        _aviso = "";
+        try
+        {
+            var respuesta = await Pedidos.RegistrarAsync(_numPedido, Sesion.Usuario!.CodUsuario, _fechaPrevEnvio);
+            if (!respuesta.Ok) { MostrarError(respuesta.Error); return; }
+
+            Nav.NavigateTo($"/pedidoCompra/{_numPedido}");
+        }
+        finally
+        {
+            _registrando = false;
+        }
+    }
+
+    private void MostrarError(string mensaje)
+    {
+        _tipoAviso = "error";
+        _aviso = mensaje;
+    }
+
+    private void Volver() => Nav.NavigateTo("/pedidoCompra");
+}
