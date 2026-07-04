@@ -53,6 +53,11 @@
             <input id="terminal" class="r5-input r5-input--numero" type="number" inputmode="numeric"
                    min="1" max="254" @bind="_numTerminal" />
         </div>
+        <div class="r5-campo">
+            <label for="puertoBalanza">Puerto COM de la báscula (0 = sin báscula; solo Windows)</label>
+            <input id="puertoBalanza" class="r5-input r5-input--numero" type="number" inputmode="numeric"
+                   min="0" max="99" @bind="_puertoBalanza" />
+        </div>
     </section>
 
     <section class="r5-tarjeta r5-columna">
@@ -96,6 +101,7 @@
     private EntornoApi _entorno;
     private string _urlPersonalizada = "";
     private short _numTerminal;
+    private byte _puertoBalanza;
     private int? _idHard;
 
     private bool _probando;
@@ -111,6 +117,7 @@
         _entorno = Config.Entorno;
         _urlPersonalizada = Config.UrlPersonalizada;
         _numTerminal = Config.NumTerminal;
+        _puertoBalanza = Config.PuertoBalanza;
         if (Config.DeviceId > 0) _idHard = Config.DeviceId;
     }
 
@@ -123,6 +130,7 @@
         Config.Entorno = _entorno;
         Config.UrlPersonalizada = _urlPersonalizada.Trim();
         if (_numTerminal is > 0 and < 255) Config.NumTerminal = _numTerminal;
+        Config.PuertoBalanza = _puertoBalanza;
     }
 
     private async Task ProbarConexionAsync()

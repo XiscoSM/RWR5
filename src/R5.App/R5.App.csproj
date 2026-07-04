@@ -54,9 +54,10 @@
         <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.0" />
     </ItemGroup>
 
-    <!-- DPAPI para el almacén de secretos en Windows (app sin empaquetar). -->
+    <!-- DPAPI para el almacén de secretos y puerto serie de la báscula (solo Windows). -->
     <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">
         <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.0" />
+        <PackageReference Include="System.IO.Ports" Version="10.0.0" />
     </ItemGroup>
 
     <ItemGroup>

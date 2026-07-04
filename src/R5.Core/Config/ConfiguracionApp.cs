@@ -32,6 +32,9 @@ public sealed class ConfiguracionApp
     /// <summary>Último usuario que inició sesión, para precargar el login.</summary>
     public short UltimoUsuario { get; set; }
 
+    /// <summary>Puerto COM de la báscula (0 = sin báscula). Solo Windows por ahora.</summary>
+    public byte PuertoBalanza { get; set; }
+
     [JsonIgnore]
     public string UrlApi => Entorno switch
     {
@@ -50,5 +53,6 @@ public sealed class ConfiguracionApp
         NumTerminal = otra.NumTerminal;
         DeviceId = otra.DeviceId;
         UltimoUsuario = otra.UltimoUsuario;
+        PuertoBalanza = otra.PuertoBalanza;
     }
 }

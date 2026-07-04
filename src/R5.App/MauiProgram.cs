@@ -75,8 +75,20 @@ public static class MauiProgram
         builder.Services.AddSingleton<EtiquetaService>();
         builder.Services.AddSingleton<IVisorArchivos, VisorArchivosMaui>();
 
-        // ---- Hardware (impl. real por plataforma en fases posteriores) ----
+        // ---- Hardware ----
+        // Báscula: Dibal D-POS por serie en Windows (si hay puerto configurado);
+        // Android (usb-serial) queda para una fase posterior.
+#if WINDOWS
+        builder.Services.AddSingleton<IBalanza>(sp =>
+        {
+            var config = sp.GetRequiredService<ConfiguracionApp>();
+            return config.PuertoBalanza > 0
+                ? new BalanzaDibalWindows(config, sp.GetRequiredService<ILogger<BalanzaDibalWindows>>())
+                : new BalanzaNula();
+        });
+#else
         builder.Services.AddSingleton<IBalanza, BalanzaNula>();
+#endif
 
         var app = builder.Build();
 
