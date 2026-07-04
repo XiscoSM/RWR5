@@ -16,7 +16,13 @@
             <button class="@(!_verPreparadas ? "activo" : "")" @onclick="() => CambiarVistaAsync(false)">Pendientes</button>
             <button class="@(_verPreparadas ? "activo" : "")" @onclick="() => CambiarVistaAsync(true)">Preparadas</button>
         </div>
+        <button class="r5-btn r5-btn--primario" style="margin-left:auto" @onclick="AsignarYPrepararAsync"
+                disabled="@(_asignando || _fecha is null)">
+            @(_asignando ? "Asignando…" : "Preparar →")
+        </button>
     </div>
+
+    <Aviso Mensaje="@_errorAsignar" />
 
     @if (_fecha is null)
     {
@@ -98,6 +104,32 @@
         }
         _fecha = fecha;
         await CargarAsync();
+    }
+
+    private bool _asignando;
+    private string _errorAsignar = "";
+
+    // Asigna el pedido al usuario (idempotente si ya es suyo) y entra al picking.
+    private async Task AsignarYPrepararAsync()
+    {
+        if (_asignando || _fecha is null) return;
+
+        _asignando = true;
+        _errorAsignar = "";
+        try
+        {
+            var respuesta = await Preparaciones.AsignarAsync(_fecha.Value, Pedido, Sesion.Usuario!.CodUsuario);
+            if (!respuesta.Ok)
+            {
+                _errorAsignar = respuesta.Error;
+                return;
+            }
+            Nav.NavigateTo($"/preparacion/{FechaRuta}/{Pedido}/picking");
+        }
+        finally
+        {
+            _asignando = false;
+        }
     }
 
     private Task CambiarVistaAsync(bool verPreparadas)

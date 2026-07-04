@@ -23,14 +23,33 @@
                 <span class="r5-chip" style="background: var(--c-primario-claro); color: var(--c-primario-osc);">
                     Albarán @_numAlbaran · @_lineasAnadidas líneas
                 </span>
-                <button class="r5-btn r5-btn--primario" @onclick="RegistrarAsync" disabled="@_registrando">
-                    @(_registrando ? "Registrando…" : "Registrar recepción")
+                <button class="r5-btn r5-btn--primario" @onclick="() => _pidiendoLink = true" disabled="@_registrando">
+                    Registrar recepción
                 </button>
             </div>
         }
     </div>
 
-    @if (_gamaElegida is null)
+    @if (_pidiendoLink)
+    {
+        @* El registro exige el "link": código de barras que une el albarán en papel con el
+           documento digital (se escanea de la etiqueta pegada al papel). *@
+        <form class="r5-tarjeta r5-columna r5-ancho-form" @onsubmit="RegistrarAsync">
+            <h3>Link del documento</h3>
+            <p class="r5-texto-suave r5-texto-sm">Escanea la etiqueta de link pegada al albarán en papel.</p>
+            <input id="linkDoc" class="r5-input r5-input--numero" type="text" inputmode="numeric" maxlength="13"
+                   @bind="_linkTexto" @bind:event="oninput" autofocus disabled="@_registrando" />
+            <Aviso Mensaje="@(_tipoAviso == "error" ? _aviso : "")" />
+            <div class="r5-fila">
+                <button type="submit" class="r5-btn r5-btn--primario"
+                        disabled="@(_registrando || !long.TryParse(_linkTexto, out _))">
+                    @(_registrando ? "Registrando…" : "Confirmar registro")
+                </button>
+                <button type="button" class="r5-btn r5-btn--fantasma" @onclick="() => _pidiendoLink = false">Cancelar</button>
+            </div>
+        </form>
+    }
+    else if (_gamaElegida is null)
     {
         <div class="r5-tarjeta r5-columna r5-ancho-form">
             <h3>Proveedor</h3>
@@ -330,16 +349,20 @@
         }
     }
 
+    private bool _pidiendoLink;
+    private string _linkTexto = "";
+
     // Registrar la recepción: irreversible desde la app (genera la entrada en RW).
+    // Requiere el link escaneado del documento en papel (obligatorio para el proc).
     private async Task RegistrarAsync()
     {
-        if (_registrando || _numAlbaran <= 0) return;
+        if (_registrando || _numAlbaran <= 0 || !long.TryParse(_linkTexto, out long link) || link <= 0) return;
 
         _registrando = true;
         _aviso = "";
         try
         {
-            var respuesta = await Albaranes.RegistrarAsync(_numAlbaran, _fecha, Sesion.Usuario!.CodUsuario);
+            var respuesta = await Albaranes.RegistrarAsync(_numAlbaran, _fecha, Sesion.Usuario!.CodUsuario, link);
             if (!respuesta.Ok) { MostrarError(respuesta.Error); return; }
 
             Nav.NavigateTo($"/recepcionAlb/{_fecha:yyyy-MM-dd}/{_numAlbaran}");
