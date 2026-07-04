@@ -31,9 +31,8 @@
     }
     else
     {
-        <div class="r5-docs">
-            @foreach (var informe in _informes)
-            {
+        <ListaPaginada Items="_informes" Context="informe">
+            <Fila>
                 <button @key="informe.NumInforme" class="r5-doc" @onclick="() => AbrirDetalle(informe)">
                     <Icono Nombre="informes" Clase="r5-modulo__icono" />
                     <span class="r5-doc__principal">
@@ -53,8 +52,8 @@
                         </span>
                     </span>
                 </button>
-            }
-        </div>
+            </Fila>
+        </ListaPaginada>
     }
 </div>
 </GuardiaModulo>

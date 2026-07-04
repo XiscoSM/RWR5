@@ -37,9 +37,8 @@
     }
     else
     {
-        <div class="r5-docs">
-            @foreach (var albaran in _albaranes)
-            {
+        <ListaPaginada Items="_albaranes" Context="albaran">
+            <Fila>
                 <button @key="@($"{albaran.Fecha:yyyyMMdd}-{albaran.NumAlbaran}")" class="r5-doc"
                         @onclick="() => AbrirDetalle(albaran)">
                     <Icono Nombre="recepcion" Clase="r5-modulo__icono" />
@@ -66,8 +65,8 @@
                         </span>
                     </span>
                 </button>
-            }
-        </div>
+            </Fila>
+        </ListaPaginada>
     }
 </div>
 </GuardiaModulo>

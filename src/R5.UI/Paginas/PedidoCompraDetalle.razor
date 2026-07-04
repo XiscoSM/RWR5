@@ -10,7 +10,28 @@
     <div class="r5-fila">
         <button class="r5-btn r5-btn--secundario" @onclick="Volver">← Pedidos</button>
         <h2>Pedido @NumPedido</h2>
+        @if (_lineas.Count > 0)
+        {
+            <div class="r5-fila" style="margin-left:auto">
+                @if (!_confirmarMail)
+                {
+                    <button class="r5-btn r5-btn--secundario" @onclick="() => _confirmarMail = true" disabled="@_enviandoMail">
+                        Enviar al proveedor
+                    </button>
+                }
+                else
+                {
+                    <span class="r5-texto-suave">¿Encolar el mail al proveedor?</span>
+                    <button class="r5-btn r5-btn--primario" @onclick="EnviarMailAsync" disabled="@_enviandoMail">
+                        @(_enviandoMail ? "Enviando…" : "Sí, enviar")
+                    </button>
+                    <button class="r5-btn r5-btn--fantasma" @onclick="() => _confirmarMail = false" disabled="@_enviandoMail">No</button>
+                }
+            </div>
+        }
     </div>
+
+    <Aviso Tipo="@_tipoAviso" Mensaje="@_aviso" />
 
     @if (_cargando)
     {
@@ -73,6 +94,11 @@
     private string _error = "";
     private List<PedidoCompraLin> _lineas = new();
 
+    private bool _confirmarMail;
+    private bool _enviandoMail;
+    private string _aviso = "";
+    private string _tipoAviso = "error";
+
     protected override async Task OnInitializedAsync()
     {
         if (!Sesion.Autenticado) return;
@@ -90,6 +116,34 @@
         finally
         {
             _cargando = false;
+        }
+    }
+
+    // Encola el mail en RW (cola de correo del ERP); el envío real lo hace el servidor.
+    private async Task EnviarMailAsync()
+    {
+        if (_enviandoMail || !Sesion.Autenticado) return;
+
+        _enviandoMail = true;
+        _aviso = "";
+        try
+        {
+            var respuesta = await Pedidos.EnviarMailAsync(NumPedido, Sesion.Usuario!.CodUsuario);
+            if (!respuesta.Ok)
+            {
+                _tipoAviso = "error";
+                _aviso = respuesta.Error;
+                return;
+            }
+            _tipoAviso = "exito";
+            _aviso = string.IsNullOrWhiteSpace(respuesta.Datos)
+                ? $"Pedido {NumPedido} encolado para envío al proveedor."
+                : respuesta.Datos;
+            _confirmarMail = false;
+        }
+        finally
+        {
+            _enviandoMail = false;
         }
     }
 

@@ -1,4 +1,7 @@
-@* Aviso inline (error / éxito / info) con icono; se oculta si no hay mensaje. *@
+@* Aviso inline (error / éxito / info) con icono; se oculta si no hay mensaje.
+   Suena al aparecer (error/éxito): confirma la operación sin mirar la pantalla. *@
+@inject IJSRuntime JS
+
 @if (!string.IsNullOrWhiteSpace(Mensaje))
 {
     <div class="r5-aviso r5-aviso--@Tipo" role="@(Tipo == "error" ? "alert" : "status")">
@@ -13,10 +16,30 @@
     /// <summary>"error", "exito" o "info".</summary>
     [Parameter] public string Tipo { get; set; } = "error";
 
+    /// <summary>Poner a false en avisos pasivos (p. ej. validación de formularios).</summary>
+    [Parameter] public bool ConSonido { get; set; } = true;
+
+    private string _ultimoSonado = "";
+
     private string _icono => Tipo switch
     {
         "exito" => "ok",
         "info" => "info",
         _ => "error"
     };
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Suena solo cuando el mensaje cambia a un valor nuevo no vacío (los re-render
+        // con el mismo aviso no repiten el pitido).
+        string clave = string.IsNullOrWhiteSpace(Mensaje) ? "" : $"{Tipo}|{Mensaje}";
+        if (clave == _ultimoSonado) return;
+        _ultimoSonado = clave;
+
+        if (ConSonido && clave.Length > 0 && Tipo is "error" or "exito")
+        {
+            try { await JS.InvokeVoidAsync("r5.sonido", Tipo); }
+            catch { /* prerender o JS no disponible: silencio */ }
+        }
+    }
 }

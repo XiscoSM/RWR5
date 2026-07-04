@@ -35,9 +35,8 @@
     }
     else
     {
-        <div class="r5-docs">
-            @foreach (var ajuste in _ajustes)
-            {
+        <ListaPaginada Items="_ajustes" Context="ajuste">
+            <Fila>
                 <button @key="@($"{ajuste.Fecha:yyyyMMdd}-{ajuste.NumAjuste}")" class="r5-doc"
                         @onclick="() => AbrirDetalle(ajuste)">
                     <Icono Nombre="ajustes-stock" Clase="r5-modulo__icono" />
@@ -62,8 +61,8 @@
                         </span>
                     </span>
                 </button>
-            }
-        </div>
+            </Fila>
+        </ListaPaginada>
     }
 </div>
 </GuardiaModulo>

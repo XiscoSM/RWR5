@@ -1,0 +1,39 @@
+@* Lista de documentos por tramos: las bandejas pueden traer cientos de filas y en
+   tablet renderizarlas todas penaliza; se muestran de Tramo en Tramo. El límite se
+   reinicia cuando cambia la lista (recarga o cambio de filtro). *@
+@typeparam TItem
+
+<div class="r5-docs">
+    @foreach (var item in Items.Take(_limite))
+    {
+        @Fila(item)
+    }
+</div>
+
+@if (Items.Count > _limite)
+{
+    <button class="r5-btn r5-btn--secundario r5-btn--bloque" @onclick="() => _limite += Tramo">
+        Mostrar más (@(Items.Count - _limite) restantes)
+    </button>
+}
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<TItem> Items { get; set; } = Array.Empty<TItem>();
+
+    [Parameter, EditorRequired] public RenderFragment<TItem> Fila { get; set; } = default!;
+
+    /// <summary>Filas visibles por tramo.</summary>
+    [Parameter] public int Tramo { get; set; } = 50;
+
+    private int _limite;
+    private object? _ultimaLista;
+
+    protected override void OnParametersSet()
+    {
+        if (!ReferenceEquals(_ultimaLista, Items))
+        {
+            _ultimaLista = Items;
+            _limite = Tramo;
+        }
+    }
+}

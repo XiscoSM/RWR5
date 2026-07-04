@@ -33,9 +33,8 @@
     }
     else
     {
-        <div class="r5-docs">
-            @foreach (var prep in _preparaciones)
-            {
+        <ListaPaginada Items="_preparaciones" Context="prep">
+            <Fila>
                 <button @key="@($"{prep.Fecha:yyyyMMdd}-{prep.Pedido}")" class="r5-doc"
                         @onclick="() => AbrirDetalle(prep)">
                     <Icono Nombre="preparacion" Clase="r5-modulo__icono" />
@@ -53,8 +52,8 @@
                         <span class="r5-doc__detalle">@prep.Preparados preparados · @prep.CountPendientes pendientes</span>
                     </span>
                 </button>
-            }
-        </div>
+            </Fila>
+        </ListaPaginada>
     }
 </div>
 </GuardiaModulo>

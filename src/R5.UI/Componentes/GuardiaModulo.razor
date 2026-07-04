@@ -1,17 +1,40 @@
 @* Guardia de permiso por módulo: el contenido solo se muestra si el usuario tiene
    el menú (CodMenu) concedido en RW. Cubre el acceso por URL directa — la rejilla
-   de Inicio ya oculta las teselas sin permiso, pero eso solo es presentación. *@
+   de Inicio ya oculta las teselas sin permiso, pero eso solo es presentación.
+   Si el menú tiene SolicitarPwd, se re-pide la contraseña una vez por sesión. *@
 @inject SesionUsuario Sesion
+@inject UsuarioService Usuarios
 
-@if (Permitido)
-{
-    @ChildContent
-}
-else
+@if (_menu is null)
 {
     <div class="r5-ancho-form">
         <Aviso Tipo="info" Mensaje="Tu usuario no tiene permiso para este módulo. Pide acceso en la configuración de usuarios de RW." />
     </div>
+}
+else if (_menu.SolicitarPwd && !Sesion.MenuValidado(CodMenu))
+{
+    <div class="r5-ancho-form r5-columna">
+        <div class="r5-tarjeta r5-columna">
+            <h3>@_menu.DescMenu</h3>
+            <p class="r5-texto-suave">Este módulo pide confirmar tu contraseña.</p>
+            <form @onsubmit="ValidarAsync" class="r5-columna">
+                <div class="r5-campo">
+                    <label for="pwdModulo">Contraseña</label>
+                    <input id="pwdModulo" class="r5-input" type="password" inputmode="numeric"
+                           @bind="_pwd" @bind:event="oninput" disabled="@_validando" />
+                </div>
+                <button type="submit" class="r5-btn r5-btn--primario r5-btn--bloque"
+                        disabled="@(_validando || string.IsNullOrWhiteSpace(_pwd))">
+                    @(_validando ? "Comprobando…" : "Entrar")
+                </button>
+            </form>
+            <Aviso Mensaje="@_aviso" />
+        </div>
+    </div>
+}
+else
+{
+    @ChildContent
 }
 
 @code {
@@ -20,5 +43,39 @@ else
 
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
-    private bool Permitido => Sesion.Usuario?.Menus.Any(m => m.CodMenu == CodMenu) == true;
+    private Menu? _menu;
+    private string _pwd = "";
+    private bool _validando;
+    private string _aviso = "";
+
+    protected override void OnParametersSet()
+        => _menu = Sesion.Usuario?.Menus.FirstOrDefault(m => m.CodMenu == CodMenu);
+
+    private async Task ValidarAsync()
+    {
+        if (_validando || Sesion.Usuario is null || !int.TryParse(_pwd.Trim(), out int pwd))
+        {
+            _aviso = "La contraseña es numérica.";
+            return;
+        }
+
+        _validando = true;
+        _aviso = "";
+        try
+        {
+            // Misma validación que el login: el proc de usuario rechaza pwd incorrecta.
+            var respuesta = await Usuarios.LoginAsync(Sesion.Usuario.CodUsuario, pwd);
+            if (!respuesta.Ok || respuesta.Datos is null || respuesta.Datos.CodUsuario <= 0)
+            {
+                _aviso = "Contraseña incorrecta.";
+                _pwd = "";
+                return;
+            }
+            Sesion.ValidarMenu(CodMenu);
+        }
+        finally
+        {
+            _validando = false;
+        }
+    }
 }

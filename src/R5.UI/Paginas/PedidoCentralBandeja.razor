@@ -38,9 +38,8 @@
     }
     else
     {
-        <div class="r5-docs">
-            @foreach (var pedido in _pedidos)
-            {
+        <ListaPaginada Items="_pedidos" Context="pedido">
+            <Fila>
                 <button @key="@($"{pedido.Fecha:yyyyMMdd}-{pedido.NumPedido}")" class="r5-doc"
                         @onclick="() => AbrirDetalle(pedido)">
                     <Icono Nombre="pedido-central" Clase="r5-modulo__icono" />
@@ -58,8 +57,8 @@
                         <span class="r5-badge @(pedido.Estado == 0 ? "r5-badge--abierto" : "r5-badge--cerrado")">@pedido.DescEstado</span>
                     </span>
                 </button>
-            }
-        </div>
+            </Fila>
+        </ListaPaginada>
     }
 </div>
 </GuardiaModulo>

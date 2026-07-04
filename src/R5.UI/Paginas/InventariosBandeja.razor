@@ -25,9 +25,8 @@
     }
     else
     {
-        <div class="r5-docs">
-            @foreach (var inventario in _inventarios)
-            {
+        <ListaPaginada Items="_inventarios" Context="inventario">
+            <Fila>
                 <button @key="@($"{inventario.Fecha:yyyyMMdd}")" class="r5-doc"
                         @onclick="() => AbrirDetalle(inventario)">
                     <Icono Nombre="inventario" Clase="r5-modulo__icono" />
@@ -39,8 +38,8 @@
                         <span class="r5-doc__detalle">@inventario.CountProds productos contados</span>
                     </span>
                 </button>
-            }
-        </div>
+            </Fila>
+        </ListaPaginada>
     }
 </div>
 </GuardiaModulo>

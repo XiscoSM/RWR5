@@ -14,9 +14,17 @@ public sealed class SesionUsuario
 
     public event Action? Cambio;
 
+    // Menús con SolicitarPwd ya validados en esta sesión (no se re-pide al volver a entrar).
+    private readonly HashSet<byte> _menusValidados = new();
+
+    public bool MenuValidado(byte codMenu) => _menusValidados.Contains(codMenu);
+
+    public void ValidarMenu(byte codMenu) => _menusValidados.Add(codMenu);
+
     public void IniciarSesion(Usuario usuario)
     {
         Usuario = usuario;
+        _menusValidados.Clear();
         Cambio?.Invoke();
     }
 
@@ -30,6 +38,7 @@ public sealed class SesionUsuario
     public void CerrarSesion()
     {
         Usuario = null;
+        _menusValidados.Clear();
         Cambio?.Invoke();
     }
 }
