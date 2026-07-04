@@ -1,0 +1,161 @@
+@* Horarios de personal (visualización): el encargado consulta el cuadro semanal
+   de su almacén por sección, actual o histórico, con las celdas legibles
+   (turnos, vacaciones, bajas) y saca el PDF con el mismo informe que R3. *@
+@page "/horarios"
+@inject HorariosService ServicioHorarios
+@inject IVisorArchivos Visor
+@inject SesionUsuario Sesion
+
+<GuardiaModulo CodMenu="33">
+<div class="r5-columna">
+
+    <div class="r5-tarjeta r5-columna">
+        <div class="r5-fila" style="flex-wrap: wrap;">
+            <div class="r5-campo" style="min-width: 260px;">
+                <label for="seccionHorario">Sección</label>
+                <select id="seccionHorario" class="r5-select" @bind="_seccion" @bind:after="CargarAsync">
+                    @foreach (var seccion in _secciones)
+                    {
+                        <option value="@seccion.Seccion">@seccion.DescSeccion</option>
+                    }
+                </select>
+            </div>
+            <div class="r5-segmento" style="align-self: flex-end;">
+                <button class="@(!_historico ? "activo" : "")" @onclick="() => CambiarHistoricoAsync(false)">Actual</button>
+                <button class="@(_historico ? "activo" : "")" @onclick="() => CambiarHistoricoAsync(true)">Histórico</button>
+            </div>
+            <button class="r5-btn r5-btn--secundario" style="margin-left:auto; align-self: flex-end;"
+                    @onclick="AbrirPdfAsync" disabled="@(_generandoPdf || _semana is null || _semana.Filas.Count == 0)">
+                <Icono Nombre="informes" Clase="r5-barra__icono" />
+                @(_generandoPdf ? "Generando…" : "PDF")
+            </button>
+        </div>
+    </div>
+
+    <Aviso Mensaje="@_aviso" />
+
+    @if (_cargando)
+    {
+        <Cargando Texto="Cargando horario…" />
+    }
+    else if (_semana is null || _semana.Filas.Count == 0)
+    {
+        <div class="r5-cargando">
+            <Icono Nombre="informes" Clase="r5-modulo__icono" />
+            <span>No hay horario @(_historico ? "histórico" : "vigente") para esta sección en @Sesion.Usuario?.Almacen.DescAlm.</span>
+        </div>
+    }
+    else
+    {
+        <div class="r5-tarjeta" style="overflow-x: auto;">
+            <table class="r5-tabla">
+                <thead>
+                    <tr>
+                        <th>Empleado</th>
+                        @foreach (var dia in _dias)
+                        {
+                            <th>@dia</th>
+                        }
+                        @if (_indiceFechaIni >= 0)
+                        {
+                            <th>Semana</th>
+                        }
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var (fila, i) in _semana.Filas.Select((f, i) => (f, i)))
+                    {
+                        <tr @key="i">
+                            <td><strong>@fila.Nombre</strong></td>
+                            @for (int d = 0; d < 7 && d < fila.Celdas.Count; d++)
+                            {
+                                <td>@fila.Celdas[d]</td>
+                            }
+                            @if (_indiceFechaIni >= 0 && _indiceFechaIni < fila.Celdas.Count)
+                            {
+                                <td class="r5-texto-suave">@FechaCorta(fila.Celdas[_indiceFechaIni])</td>
+                            }
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+</GuardiaModulo>
+
+@code {
+    private static readonly string[] _dias = { "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo" };
+
+    private List<HorarioSeccion> _secciones = new();
+    private byte _seccion;
+    private bool _historico;
+    private bool _cargando;
+    private bool _generandoPdf;
+    private string _aviso = "";
+    private HorarioSemana? _semana;
+    private int _indiceFechaIni = -1;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var secciones = await ServicioHorarios.GetSeccionesAsync();
+        if (!secciones.Ok || secciones.Datos is null || secciones.Datos.Count == 0)
+        {
+            _aviso = secciones.Error;
+            return;
+        }
+        _secciones = secciones.Datos;
+        _seccion = _secciones[0].Seccion;
+        await CargarAsync();
+    }
+
+    private Task CambiarHistoricoAsync(bool historico)
+    {
+        if (_historico == historico) return Task.CompletedTask;
+        _historico = historico;
+        return CargarAsync();
+    }
+
+    private async Task CargarAsync()
+    {
+        if (!Sesion.Autenticado) return;
+
+        _cargando = true;
+        _aviso = "";
+        _semana = null;
+        try
+        {
+            var respuesta = await ServicioHorarios.GetSemanaAsync(Sesion.Usuario!.Almacen.CodAlm, _seccion, _historico);
+            if (!respuesta.Ok) { _aviso = respuesta.Error; return; }
+
+            _semana = respuesta.Datos;
+            // La columna FechaIni (histórico) va tras los 7 días; celdas[i] = columnas[i+1].
+            _indiceFechaIni = _semana?.Columnas.FindIndex(c => c.Equals("FechaIni", StringComparison.OrdinalIgnoreCase)) - 1 ?? -1;
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private static string FechaCorta(string valor)
+        => DateTime.TryParse(valor, out var fecha) ? fecha.ToString("dd/MM/yy") : valor;
+
+    private async Task AbrirPdfAsync()
+    {
+        if (_generandoPdf || !Sesion.Autenticado) return;
+
+        _generandoPdf = true;
+        _aviso = "";
+        try
+        {
+            var respuesta = await ServicioHorarios.GetPdfAsync(Sesion.Usuario!.Almacen.CodAlm, _seccion, _historico);
+            if (!respuesta.Ok || respuesta.Datos is null) { _aviso = respuesta.Error; return; }
+            await Visor.AbrirAsync($"Horarios_{_seccion}.pdf", respuesta.Datos);
+        }
+        finally
+        {
+            _generandoPdf = false;
+        }
+    }
+}

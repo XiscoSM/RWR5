@@ -1,0 +1,247 @@
+@* Gestiones de empresa: el empleado se identifica con su número (validado contra
+   la BD, con su nombre y saldo de vacaciones a la vista) y gestiona sus firmas:
+   pendientes, firmadas y las firmadas como responsable. La firma replica el rito
+   de R3: aceptar los términos y confirmar tecleando el nº de firma del documento. *@
+@page "/gestiones"
+@inject GestionesService ServicioGestiones
+@inject SesionUsuario Sesion
+@inject IJSRuntime JS
+
+<GuardiaModulo CodMenu="34">
+<div class="r5-columna">
+
+    @if (_empleado is null)
+    {
+        <form class="r5-tarjeta r5-columna r5-ancho-form" @onsubmit="ValidarEmpleadoAsync">
+            <h3>Identifícate</h3>
+            <div class="r5-campo">
+                <label for="numEmpleado">Número de empleado</label>
+                <input id="numEmpleado" class="r5-input r5-input--numero" type="number" inputmode="numeric"
+                       @bind="_numEmpleado" @bind:event="oninput" autofocus disabled="@_ocupado" />
+            </div>
+            <Aviso Mensaje="@(_tipoAviso == "error" ? _aviso : "")" />
+            <button type="submit" class="r5-btn r5-btn--primario r5-btn--bloque"
+                    disabled="@(_ocupado || _numEmpleado is null or <= 0)">
+                @(_ocupado ? "Comprobando…" : "Continuar")
+            </button>
+        </form>
+    }
+    else
+    {
+        <div class="r5-tarjeta">
+            <div class="r5-fila" style="flex-wrap: wrap;">
+                <div class="r5-ficha__identidad">
+                    <span class="r5-ficha__codigo">Empleado @_empleado.Empleado</span>
+                    <span class="r5-ficha__nombre">@_empleado.Nombre</span>
+                </div>
+                <span class="r5-chip" style="margin-left:auto; background: var(--c-exito-fondo); color: var(--c-exito);">
+                    Vacaciones pendientes: @_empleado.DiasVacPend días
+                </span>
+                <button class="r5-btn r5-btn--fantasma" @onclick="CambiarEmpleado">Cambiar</button>
+            </div>
+        </div>
+
+        <div class="r5-fila">
+            <div class="r5-segmento">
+                <button class="@(_vista == 0 ? "activo" : "")" @onclick="() => CambiarVistaAsync(0)">Pendientes de firma</button>
+                <button class="@(_vista == 1 ? "activo" : "")" @onclick="() => CambiarVistaAsync(1)">Firmadas</button>
+                <button class="@(_vista == 2 ? "activo" : "")" @onclick="() => CambiarVistaAsync(2)">Como responsable</button>
+            </div>
+        </div>
+
+        <Aviso Tipo="@_tipoAviso" Mensaje="@_aviso" />
+
+        @if (_firmando is not null)
+        {
+            <div class="r5-tarjeta r5-columna r5-ancho-form">
+                <h3>Firmar: @_firmando.DescGestion</h3>
+                @if (!string.IsNullOrWhiteSpace(_firmando.TerminosFirma))
+                {
+                    <p style="white-space: pre-wrap;">@_firmando.TerminosFirma</p>
+                }
+                <p class="r5-texto-suave r5-texto-sm">
+                    [Confirmar] expresa tu conformidad y aceptación de los términos del documento.
+                </p>
+                <div class="r5-campo">
+                    <label for="numFirma">Nº de firma para confirmar (documento @_firmando.Mov)</label>
+                    <input id="numFirma" class="r5-input r5-input--numero" type="number" inputmode="numeric"
+                           @bind="_numFirma" @bind:event="oninput" disabled="@_ocupado" />
+                </div>
+                <div class="r5-fila">
+                    <button class="r5-btn r5-btn--primario" @onclick="ConfirmarFirmaAsync"
+                            disabled="@(_ocupado || _numFirma != _firmando.Mov)">
+                        @(_ocupado ? "Firmando…" : "Confirmar firma")
+                    </button>
+                    <button class="r5-btn r5-btn--fantasma" @onclick="() => _firmando = null">Cancelar</button>
+                </div>
+            </div>
+        }
+
+        @if (_cargando)
+        {
+            <Cargando Texto="Cargando gestiones…" />
+        }
+        else if (_gestiones.Count == 0)
+        {
+            <div class="r5-cargando">
+                <Icono Nombre="ok" Clase="r5-modulo__icono" />
+                <span>@(_vista == 0 ? "No tienes gestiones pendientes de firma." : "Sin gestiones en esta vista.")</span>
+            </div>
+        }
+        else
+        {
+            <div class="r5-docs">
+                @foreach (var gestion in _gestiones)
+                {
+                    <div @key="gestion.Mov" class="r5-doc" style="cursor: default;">
+                        <Icono Nombre="informes" Clase="r5-modulo__icono" />
+                        <span class="r5-doc__principal">
+                            <span class="r5-doc__titulo">@gestion.DescGestion</span>
+                            <span class="r5-doc__detalle">
+                                @gestion.DescFirma · Doc. @gestion.Mov
+                                @if (gestion.FechaFirma is not null)
+                                {
+                                    <text> · @gestion.FechaFirma.Value.ToString("dd/MM/yyyy")</text>
+                                }
+                                @if (_vista == 2 && gestion.Usuario > 0)
+                                {
+                                    <text> · @gestion.Usuario @gestion.DescUsuario</text>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(gestion.DetallesGestionUser))
+                                {
+                                    <text> · @gestion.DetallesGestionUser</text>
+                                }
+                            </span>
+                        </span>
+                        <span class="r5-doc__derecha">
+                            @if (_vista > 0)
+                            {
+                                <span class="r5-badge @(gestion.Realizada ? "r5-badge--cerrado" : "r5-badge--aviso")">
+                                    @(gestion.Realizada ? "Realizada" : "En trámite")
+                                </span>
+                            }
+                            @if (_vista == 0)
+                            {
+                                <button class="r5-btn r5-btn--primario" @onclick="() => AbrirFirma(gestion)" disabled="@_ocupado">
+                                    Firmar
+                                </button>
+                            }
+                        </span>
+                    </div>
+                }
+            </div>
+        }
+    }
+</div>
+</GuardiaModulo>
+
+@code {
+    private int? _numEmpleado;
+    private EmpleadoInfo? _empleado;
+    private byte _vista;
+    private bool _ocupado;
+    private bool _cargando;
+    private string _aviso = "";
+    private string _tipoAviso = "error";
+
+    private List<GestionEmpresaUser> _gestiones = new();
+    private GestionEmpresaUser? _firmando;
+    private int? _numFirma;
+
+    private async Task ValidarEmpleadoAsync()
+    {
+        if (_ocupado || _numEmpleado is null or <= 0) return;
+
+        _ocupado = true;
+        _aviso = "";
+        try
+        {
+            var respuesta = await ServicioGestiones.GetEmpleadoAsync(_numEmpleado.Value);
+            if (!respuesta.Ok || respuesta.Datos is null) { MostrarError(respuesta.Error); return; }
+            if (string.IsNullOrWhiteSpace(respuesta.Datos.Nombre)) { MostrarError($"El empleado {_numEmpleado} no existe."); return; }
+
+            _empleado = respuesta.Datos;
+            await CargarAsync();
+        }
+        finally
+        {
+            _ocupado = false;
+        }
+    }
+
+    private void CambiarEmpleado()
+    {
+        _empleado = null;
+        _gestiones = new();
+        _firmando = null;
+        _aviso = "";
+    }
+
+    private Task CambiarVistaAsync(byte vista)
+    {
+        if (_vista == vista) return Task.CompletedTask;
+        _vista = vista;
+        _firmando = null;
+        return CargarAsync();
+    }
+
+    private async Task CargarAsync()
+    {
+        if (_empleado is null) return;
+
+        _cargando = true;
+        _aviso = "";
+        try
+        {
+            var respuesta = _vista switch
+            {
+                1 => await ServicioGestiones.GetFirmadasAsync(_empleado.Empleado),
+                2 => await ServicioGestiones.GetFirmadasResponsableAsync(_empleado.Empleado),
+                _ => await ServicioGestiones.GetPendientesAsync(_empleado.Empleado)
+            };
+            if (!respuesta.Ok) { MostrarError(respuesta.Error); _gestiones = new(); return; }
+            _gestiones = respuesta.Datos ?? new();
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private void AbrirFirma(GestionEmpresaUser gestion)
+    {
+        _firmando = gestion;
+        _numFirma = null;
+        _aviso = "";
+    }
+
+    private async Task ConfirmarFirmaAsync()
+    {
+        if (_ocupado || _firmando is null || _empleado is null || _numFirma != _firmando.Mov) return;
+
+        _ocupado = true;
+        _aviso = "";
+        try
+        {
+            var respuesta = await ServicioGestiones.FirmarAsync(_empleado.Empleado, _firmando.Mov);
+            if (!respuesta.Ok) { MostrarError(respuesta.Error); return; }
+
+            _tipoAviso = "exito";
+            _aviso = _firmando.EnvioMail && !string.IsNullOrWhiteSpace(_firmando.Mail)
+                ? $"Gestión firmada. Se enviará email a {_firmando.Mail} cuando se realice."
+                : "Gestión firmada.";
+            _firmando = null;
+            await CargarAsync();
+        }
+        finally
+        {
+            _ocupado = false;
+        }
+    }
+
+    private void MostrarError(string mensaje)
+    {
+        _tipoAviso = "error";
+        _aviso = mensaje;
+    }
+}
