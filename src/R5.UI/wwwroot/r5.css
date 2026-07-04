@@ -127,8 +127,11 @@ h3 { font-size: var(--texto-lg); }
 .r5-barra__inicio {
     min-height: 44px;
     padding: 0 var(--esp-3);
-    color: #fff;
 }
+
+/* Los botones fantasma de la barra van sobre fondo oscuro: icono en blanco.
+   Anclado a .r5-barra para ganar en especificidad a .r5-btn--fantasma. */
+.r5-barra .r5-btn--fantasma { color: #fff; }
 
 .r5-contenido {
     flex: 1;
