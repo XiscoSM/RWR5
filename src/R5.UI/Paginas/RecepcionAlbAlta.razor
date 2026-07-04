@@ -1,0 +1,360 @@
+@* Recepción de albarán (alta): tres pasos en una pantalla progresiva.
+   1) Identificar proveedor: escaneando un producto suyo (lo habitual en el muelle)
+      o tecleando su código; se elige la gama si hay varias.
+   2) Nº de albarán del proveedor (papel que acompaña la mercancía).
+   3) Escaneo encadenado de líneas con cajas/cantidad y precios de la condición
+      de compra; la primera línea crea el albarán. Registrar al terminar. *@
+@page "/recepcionAlb/alta"
+@inject AlbaranService Albaranes
+@inject ProveedorService Proveedores
+@inject SesionUsuario Sesion
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<GuardiaModulo CodMenu="9">
+<div class="r5-columna">
+
+    <div class="r5-fila">
+        <button class="r5-btn r5-btn--secundario" @onclick="Volver">← Albaranes</button>
+        <h2>Nueva recepción</h2>
+        @if (_numAlbaran > 0)
+        {
+            <div class="r5-fila" style="margin-left:auto">
+                <span class="r5-chip" style="background: var(--c-primario-claro); color: var(--c-primario-osc);">
+                    Albarán @_numAlbaran · @_lineasAnadidas líneas
+                </span>
+                <button class="r5-btn r5-btn--primario" @onclick="RegistrarAsync" disabled="@_registrando">
+                    @(_registrando ? "Registrando…" : "Registrar recepción")
+                </button>
+            </div>
+        }
+    </div>
+
+    @if (_gamaElegida is null)
+    {
+        <div class="r5-tarjeta r5-columna r5-ancho-form">
+            <h3>Proveedor</h3>
+            <form @onsubmit="BuscarProveedorAsync" class="r5-buscador">
+                <input id="busquedaProv" class="r5-input" type="text" inputmode="numeric"
+                       placeholder="Escanea un producto del proveedor o teclea su código"
+                       @bind="_codigoProv" @bind:event="oninput" autofocus disabled="@_ocupado" />
+                <button type="submit" class="r5-btn r5-btn--primario" disabled="@(_ocupado || string.IsNullOrWhiteSpace(_codigoProv))">
+                    Buscar
+                </button>
+            </form>
+
+            <Aviso Mensaje="@(_tipoAviso == "error" ? _aviso : "")" />
+
+            @if (_gamas.Count > 0)
+            {
+                <h3>Elige la condición de compra</h3>
+                <div class="r5-docs">
+                    @foreach (var gama in _gamas)
+                    {
+                        <button @key="@($"{gama.CodProv}-{gama.Gama.CodGama}")" class="r5-doc" @onclick="() => ElegirGama(gama)">
+                            <Icono Nombre="recepcion" Clase="r5-modulo__icono" />
+                            <span class="r5-doc__principal">
+                                <span class="r5-doc__titulo">@gama.DescProv</span>
+                                <span class="r5-doc__detalle">Prov. @gama.CodProv · Gama @gama.Gama.CodGama · @gama.Gama.DescGama</span>
+                            </span>
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="r5-tarjeta r5-columna">
+            <div class="r5-fila" style="flex-wrap: wrap;">
+                <span class="r5-texto-suave">Proveedor:</span>
+                <strong>@_gamaElegida.DescProv · Gama @_gamaElegida.Gama.CodGama</strong>
+                @if (_numAlbaran == 0)
+                {
+                    <button class="r5-btn r5-btn--fantasma" @onclick="CambiarProveedor">Cambiar</button>
+                }
+                <div class="r5-campo" style="margin-left:auto; min-width: 220px;">
+                    <label for="numAlbProv">Nº albarán del proveedor</label>
+                    <input id="numAlbProv" class="r5-input" type="text" maxlength="20"
+                           @bind="_numAlbProv" @bind:event="oninput" disabled="@(_numAlbaran > 0)" />
+                </div>
+            </div>
+
+            <form @onsubmit="BuscarProductoAsync" class="r5-buscador">
+                <input id="busquedaRecepcion" class="r5-input" type="text" inputmode="numeric"
+                       placeholder="Escanea un EAN o teclea el código de producto"
+                       @bind="_codigo" @bind:event="oninput" disabled="@_ocupado" />
+                <button type="submit" class="r5-btn r5-btn--primario"
+                        disabled="@(_ocupado || string.IsNullOrWhiteSpace(_codigo) || string.IsNullOrWhiteSpace(_numAlbProv))">
+                    Buscar
+                </button>
+            </form>
+            @if (string.IsNullOrWhiteSpace(_numAlbProv))
+            {
+                <span class="r5-texto-suave r5-texto-sm">Introduce el nº de albarán del proveedor antes de escanear.</span>
+            }
+        </div>
+
+        <Aviso Tipo="@_tipoAviso" Mensaje="@_aviso" />
+
+        @if (_ocupado)
+        {
+            <Cargando />
+        }
+        else if (_linea is not null)
+        {
+            <div class="r5-tarjeta r5-columna">
+                <div class="r5-ficha__identidad">
+                    <span class="r5-ficha__codigo">@_linea.Prod.CodProd</span>
+                    <span class="r5-ficha__nombre">@_linea.Prod.DescProd</span>
+                </div>
+
+                <dl class="r5-datos">
+                    <div><dt>Precio tarifa</dt><dd>@Moneda((decimal)_linea.PTarifa)</dd></div>
+                    <div><dt>Precio neto (PNC)</dt><dd>@Moneda((decimal)_linea.PNC)</dd></div>
+                    @if (!string.IsNullOrWhiteSpace(_linea.DtosComercialesTexto))
+                    {
+                        <div><dt>Dtos. comerciales</dt><dd>@_linea.DtosComercialesTexto</dd></div>
+                    }
+                    <div><dt>Unidades por caja</dt><dd>@UnidsCaja</dd></div>
+                    @if (_linea.CantPedida > 0)
+                    {
+                        <div><dt>Cantidad pedida</dt><dd>@Cantidad(_linea.CantPedida, _linea.Prod.DecimalesEnCant)</dd></div>
+                    }
+                    <div><dt>Stock actual</dt><dd>@Cantidad(_linea.Stock, _linea.Prod.DecimalesEnCant)</dd></div>
+                </dl>
+
+                <div class="r5-fila">
+                    <div class="r5-campo" style="flex:1">
+                        <label for="cajasRec">Cajas</label>
+                        <input id="cajasRec" class="r5-input r5-input--numero" type="number" inputmode="numeric" min="0"
+                               value="@_cajas" @oninput="CambioCajas" />
+                    </div>
+                    <div class="r5-campo" style="flex:1">
+                        <label for="cantRec">Cantidad</label>
+                        <input id="cantRec" class="r5-input r5-input--numero" type="number" inputmode="decimal"
+                               step="@(_linea.Prod.DecimalesEnCant ? "0.001" : "1")" min="0"
+                               @bind="_cantidad" @bind:event="oninput" />
+                    </div>
+                </div>
+
+                <button class="r5-btn r5-btn--primario r5-btn--bloque" @onclick="AnadirAsync"
+                        disabled="@(_anadiendo || _cantidad <= 0)">
+                    @(_anadiendo ? "Añadiendo…" : $"Añadir {Cantidad(_cantidad, _linea.Prod.DecimalesEnCant)} al albarán")
+                </button>
+            </div>
+        }
+    }
+</div>
+</GuardiaModulo>
+
+@code {
+    private string _codigoProv = "";
+    private List<Proveedor> _gamas = new();
+    private Proveedor? _gamaElegida;
+    private string _numAlbProv = "";
+
+    private string _codigo = "";
+    private bool _ocupado;
+    private bool _anadiendo;
+    private bool _registrando;
+    private string _aviso = "";
+    private string _tipoAviso = "error";
+
+    private AlbaranLin? _linea;
+    private long _eanEscaneado;
+    private short _cajas;
+    private decimal _cantidad;
+    private int _numAlbaran;
+    private int _lineasAnadidas;
+    private readonly DateTime _fecha = DateTime.Today;
+
+    private short UnidsCaja => _linea is null ? (short)1
+        : (_linea.UnidsCaja > 0 ? _linea.UnidsCaja : (_linea.Prod.UnidsCaja > 0 ? _linea.Prod.UnidsCaja : (short)1));
+
+    private async Task BuscarProveedorAsync()
+    {
+        string codigo = _codigoProv.Trim();
+        if (_ocupado || codigo.Length == 0) return;
+
+        _ocupado = true;
+        _aviso = "";
+        _gamas = new();
+        try
+        {
+            ApiRespuesta<List<Proveedor>> respuesta;
+            if (codigo.Length >= 8 && long.TryParse(codigo, out long ean))
+            {
+                respuesta = await Proveedores.GetGamasPorEanAsync(ean);
+            }
+            else if (int.TryParse(codigo, out int codProv) && codProv > 0)
+            {
+                respuesta = await Proveedores.GetGamasPorProvAsync(codProv);
+            }
+            else
+            {
+                MostrarError("Introduce un EAN o un código de proveedor numérico.");
+                return;
+            }
+
+            if (!respuesta.Ok || respuesta.Datos is null) { MostrarError(respuesta.Error); return; }
+            if (respuesta.Datos.Count == 0) { MostrarError("Sin condiciones de compra para ese código."); return; }
+
+            _gamas = respuesta.Datos;
+            if (_gamas.Count == 1) ElegirGama(_gamas[0]);
+        }
+        finally
+        {
+            _ocupado = false;
+        }
+    }
+
+    private void ElegirGama(Proveedor gama)
+    {
+        _gamaElegida = gama;
+        _aviso = "";
+    }
+
+    private void CambiarProveedor()
+    {
+        _gamaElegida = null;
+        _gamas = new();
+        _linea = null;
+        _aviso = "";
+    }
+
+    // Cajas y cantidad van ligadas: cambiar cajas recalcula cantidad (cajas × unids/caja).
+    private void CambioCajas(ChangeEventArgs e)
+    {
+        if (short.TryParse(e.Value?.ToString(), out short cajas) && cajas >= 0)
+        {
+            _cajas = cajas;
+            _cantidad = cajas * UnidsCaja;
+        }
+    }
+
+    private async Task BuscarProductoAsync()
+    {
+        string codigo = _codigo.Trim();
+        if (_ocupado || codigo.Length == 0 || _gamaElegida is null || !Sesion.Autenticado) return;
+
+        _ocupado = true;
+        _aviso = "";
+        _linea = null;
+        _eanEscaneado = 0;
+        try
+        {
+            short codAlm = Sesion.Usuario!.Almacen.CodAlm;
+
+            ApiRespuesta<AlbaranLin> respuesta;
+            if (codigo.Length >= 8 && long.TryParse(codigo, out long ean))
+            {
+                respuesta = await Albaranes.GetLineaPorEanAsync(_numAlbaran, _fecha, ean, codAlm,
+                    _gamaElegida.CodProv, _gamaElegida.Gama.CodGama);
+                _eanEscaneado = ean;
+            }
+            else if (int.TryParse(codigo, out int codProd) && codProd > 0)
+            {
+                respuesta = await Albaranes.GetLineaPorProdAsync(_numAlbaran, _fecha, codProd, codAlm,
+                    _gamaElegida.CodProv, _gamaElegida.Gama.CodGama);
+            }
+            else
+            {
+                MostrarError("Introduce un código numérico (producto o EAN).");
+                return;
+            }
+
+            if (!respuesta.Ok || respuesta.Datos is null) { MostrarError(respuesta.Error); return; }
+            if (respuesta.Datos.Prod.CodProd <= 0) { MostrarError($"El código {codigo} no corresponde a ningún producto de este proveedor."); return; }
+
+            _linea = respuesta.Datos;
+            _cajas = 1;
+            _cantidad = UnidsCaja;
+        }
+        finally
+        {
+            _ocupado = false;
+            StateHasChanged();
+            await JS.InvokeVoidAsync("r5.seleccionar", "busquedaRecepcion");
+        }
+    }
+
+    private async Task AnadirAsync()
+    {
+        if (_anadiendo || _linea is null || _gamaElegida is null || _cantidad <= 0) return;
+
+        _anadiendo = true;
+        _aviso = "";
+        try
+        {
+            var alta = new AlbLinInsertDTO
+            {
+                Fecha = _fecha,
+                CodProv = _gamaElegida.CodProv,
+                CodAlm = Sesion.Usuario!.Almacen.CodAlm,
+                Cant = _cantidad,
+                TipoLinAtipico = _linea.TipoLinAtipico,
+                Cajas = _cajas,
+                PTarifa = (decimal)_linea.PTarifa,
+                NumPedido = 0,
+                DtosComercialesTexto = _linea.DtosComercialesTexto ?? "",
+                Iva = _linea.Prod.Iva,
+                Reg = false,
+                CodEan = _eanEscaneado,
+                NumAlbaran = _numAlbaran,
+                CodGama = _gamaElegida.Gama.CodGama,
+                CodProd = _linea.Prod.CodProd,
+                PrecioNetoComercial = (decimal)_linea.PNC,
+                CodUsuario = Sesion.Usuario.CodUsuario,
+                UnidsCaja = UnidsCaja,
+                DtosComerciales = (decimal)_linea.DtosComerciales,
+                NumAlbProv = _numAlbProv.Trim(),
+                TipoPrecio = _linea.TipoPrecio,
+                PncFecha = _linea.PncFecha
+            };
+            var respuesta = await Albaranes.PostLineaAsync(alta);
+            if (!respuesta.Ok || respuesta.Datos is null) { MostrarError(respuesta.Error); return; }
+
+            _numAlbaran = respuesta.Datos.NumDoc;
+            _lineasAnadidas++;
+            _tipoAviso = "exito";
+            _aviso = $"{_linea.Prod.DescProd}: {Cantidad(_cantidad, _linea.Prod.DecimalesEnCant)} añadido al albarán {_numAlbaran}.";
+            _linea = null;
+            _codigo = "";
+        }
+        finally
+        {
+            _anadiendo = false;
+            StateHasChanged();
+            await JS.InvokeVoidAsync("r5.seleccionar", "busquedaRecepcion");
+        }
+    }
+
+    // Registrar la recepción: irreversible desde la app (genera la entrada en RW).
+    private async Task RegistrarAsync()
+    {
+        if (_registrando || _numAlbaran <= 0) return;
+
+        _registrando = true;
+        _aviso = "";
+        try
+        {
+            var respuesta = await Albaranes.RegistrarAsync(_numAlbaran, _fecha, Sesion.Usuario!.CodUsuario);
+            if (!respuesta.Ok) { MostrarError(respuesta.Error); return; }
+
+            Nav.NavigateTo($"/recepcionAlb/{_fecha:yyyy-MM-dd}/{_numAlbaran}");
+        }
+        finally
+        {
+            _registrando = false;
+        }
+    }
+
+    private void MostrarError(string mensaje)
+    {
+        _tipoAviso = "error";
+        _aviso = mensaje;
+    }
+
+    private void Volver() => Nav.NavigateTo("/recepcionAlb");
+}

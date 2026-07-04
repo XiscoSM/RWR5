@@ -14,6 +14,10 @@
             <button class="@(!_registrados ? "activo" : "")" @onclick="() => CambiarFiltroAsync(false)">Pendientes</button>
             <button class="@(_registrados ? "activo" : "")" @onclick="() => CambiarFiltroAsync(true)">Registrados</button>
         </div>
+        <button class="r5-btn r5-btn--primario" style="margin-left:auto"
+                @onclick="@(() => Nav.NavigateTo("/recepcionAlb/alta"))">
+            + Nueva recepción
+        </button>
     </div>
 
     @if (_cargando)

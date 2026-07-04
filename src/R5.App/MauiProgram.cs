@@ -71,6 +71,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<InformeService>();
         builder.Services.AddSingleton<ReportService>();
         builder.Services.AddSingleton<AlmacenService>();
+        builder.Services.AddSingleton<ProveedorService>();
         builder.Services.AddSingleton<IVisorArchivos, VisorArchivosMaui>();
 
         // ---- Hardware (impl. real por plataforma en fases posteriores) ----
