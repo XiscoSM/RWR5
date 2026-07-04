@@ -41,15 +41,116 @@
             </div>
         </div>
 
-        <div class="r5-fila">
+        <div class="r5-fila" style="flex-wrap: wrap;">
             <div class="r5-segmento">
                 <button class="@(_vista == 0 ? "activo" : "")" @onclick="() => CambiarVistaAsync(0)">Pendientes de firma</button>
                 <button class="@(_vista == 1 ? "activo" : "")" @onclick="() => CambiarVistaAsync(1)">Firmadas</button>
                 <button class="@(_vista == 2 ? "activo" : "")" @onclick="() => CambiarVistaAsync(2)">Como responsable</button>
             </div>
+            @* Solo aparecen los tipos con catálogo no vacío: mismo criterio de permiso que R3. *@
+            <div class="r5-fila" style="margin-left:auto">
+                @foreach (var (tipo, etiqueta) in _tiposSolicitud)
+                {
+                    @if (_catalogos.TryGetValue(tipo, out var cat) && cat.Count > 0)
+                    {
+                        <button class="r5-btn r5-btn--secundario" @onclick="() => AbrirSolicitud(tipo)" disabled="@_ocupado">
+                            @etiqueta
+                        </button>
+                    }
+                }
+            </div>
         </div>
 
         <Aviso Tipo="@_tipoAviso" Mensaje="@_aviso" />
+
+        @if (_tipoSolicitud > 0)
+        {
+            <div class="r5-tarjeta r5-columna r5-ancho-form">
+                <h3>@_tiposSolicitud.First(t => t.Item1 == _tipoSolicitud).Item2</h3>
+
+                <div class="r5-campo">
+                    <label for="gestionSel">Solicitud</label>
+                    <select id="gestionSel" class="r5-select" @bind="_idGestionSel">
+                        @foreach (var gestion in _catalogos[_tipoSolicitud])
+                        {
+                            <option value="@gestion.IdGestion">@gestion.DescGestion</option>
+                        }
+                    </select>
+                </div>
+
+                <div class="r5-campo">
+                    <label for="empleadoDest">Nº de empleado para quien se solicita</label>
+                    <input id="empleadoDest" class="r5-input r5-input--numero" type="number" inputmode="numeric"
+                           @bind="_empleadoDestNum" @bind:event="oninput" disabled="@_enviandoSolicitud" />
+                    @if (_empleadoDest is not null && _empleadoDestNum == _empleadoDest.Empleado)
+                    {
+                        <span class="r5-texto-suave r5-texto-sm">@_empleadoDest.Empleado — @_empleadoDest.Nombre</span>
+                    }
+                </div>
+
+                @if (GestionSel is not null)
+                {
+                    @if (GestionSel.Detalles.Length > 0)
+                    {
+                        <div class="r5-campo">
+                            <label for="detallesSol">@GestionSel.Detalles</label>
+                            <input id="detallesSol" class="r5-input" type="text"
+                                   inputmode="@(GestionSel.TipoDato == "STRING" ? "text" : "numeric")"
+                                   @bind="_detalles" @bind:event="oninput" disabled="@_enviandoSolicitud" />
+                        </div>
+                        @if (GestionSel.ConfirmarDato)
+                        {
+                            <div class="r5-campo">
+                                <label for="detallesConf">Vuelve a introducirlo para confirmar</label>
+                                <input id="detallesConf" class="r5-input" type="text"
+                                       inputmode="@(GestionSel.TipoDato == "STRING" ? "text" : "numeric")"
+                                       @bind="_detallesConfirma" @bind:event="oninput" disabled="@_enviandoSolicitud" />
+                            </div>
+                        }
+                    }
+
+                    @if (GestionSel.IntroFechaIni)
+                    {
+                        <div class="r5-fila">
+                            <div class="r5-campo">
+                                <label for="fechaIniSol">Fecha de inicio</label>
+                                <input id="fechaIniSol" class="r5-input" type="date"
+                                       @bind="_fechaIni" disabled="@_enviandoSolicitud" />
+                            </div>
+                            @if (GestionSel.PermiteFechaFin)
+                            {
+                                <div class="r5-campo">
+                                    <label for="fechaFinSol">Fecha fin (incluida en el periodo)</label>
+                                    <input id="fechaFinSol" class="r5-input" type="date"
+                                           @bind="_fechaFin" disabled="@_enviandoSolicitud" />
+                                </div>
+                            }
+                        </div>
+                        @if (GestionSel.PermiteFechaFin && _fechaFin is not null && _fechaFin >= _fechaIni)
+                        {
+                            <span class="r5-texto-suave r5-texto-sm">
+                                Total: @((_fechaFin.Value - _fechaIni).Days + 1) días (del @_fechaIni.ToString("dd/MM/yy") al @_fechaFin.Value.ToString("dd/MM/yy"))
+                            </span>
+                        }
+                    }
+
+                    @if (TerminosSolicitud.Length > 0)
+                    {
+                        <div class="r5-campo">
+                            <label>Términos y condiciones</label>
+                            <p style="white-space: pre-wrap;" class="r5-texto-sm">@TerminosSolicitud</p>
+                        </div>
+                    }
+                }
+
+                <div class="r5-fila">
+                    <button class="r5-btn r5-btn--primario" @onclick="EnviarSolicitudAsync" disabled="@_enviandoSolicitud">
+                        @(_enviandoSolicitud ? "Enviando…" : TerminosSolicitud.Length > 0 ? "Aceptar términos y solicitar" : "Solicitar")
+                    </button>
+                    <button class="r5-btn r5-btn--fantasma" @onclick="() => _tipoSolicitud = 0" disabled="@_enviandoSolicitud">Cancelar</button>
+                </div>
+            </div>
+        }
 
         @if (_firmando is not null)
         {
@@ -148,6 +249,35 @@
     private GestionEmpresaUser? _firmando;
     private int? _numFirma;
 
+    // --- Solicitudes (EPI/Vacaciones/Madisa): tipos y flujo del canon R3 ---
+    private static readonly (byte, string)[] _tiposSolicitud =
+        { (18, "Solicitar EPI"), (16, "Solicitar vacaciones"), (2, "Acceso Madisa") };
+    private readonly Dictionary<byte, List<GestionEmpresa>> _catalogos = new();
+    private byte _tipoSolicitud;           // 0 = asistente cerrado
+    private int _idGestionSel;
+    private int? _empleadoDestNum;
+    private EmpleadoInfo? _empleadoDest;   // destino validado (nombre a la vista)
+    private string _detalles = "";
+    private string _detallesConfirma = "";
+    private DateTime _fechaIni = DateTime.Today.AddDays(1);
+    private DateTime? _fechaFin;
+    private bool _enviandoSolicitud;
+
+    private GestionEmpresa? GestionSel
+        => _tipoSolicitud > 0 ? _catalogos[_tipoSolicitud].FirstOrDefault(g => g.IdGestion == _idGestionSel) : null;
+
+    // Para uno mismo rigen los términos de usuario; para otro, los de responsable (como R3).
+    private string TerminosSolicitud
+    {
+        get
+        {
+            if (GestionSel is null) return "";
+            bool paraMi = _empleadoDestNum == _empleado?.Empleado;
+            string terminos = paraMi && GestionSel.TerminosUser.Length > 0 ? GestionSel.TerminosUser : GestionSel.TerminosResp;
+            return terminos.Length > 0 ? terminos : GestionSel.Terminos;
+        }
+    }
+
     private async Task ValidarEmpleadoAsync()
     {
         if (_ocupado || _numEmpleado is null or <= 0) return;
@@ -161,6 +291,7 @@
             if (string.IsNullOrWhiteSpace(respuesta.Datos.Nombre)) { MostrarError($"El empleado {_numEmpleado} no existe."); return; }
 
             _empleado = respuesta.Datos;
+            await CargarCatalogosAsync();
             await CargarAsync();
         }
         finally
@@ -174,7 +305,99 @@
         _empleado = null;
         _gestiones = new();
         _firmando = null;
+        _tipoSolicitud = 0;
+        _catalogos.Clear();
         _aviso = "";
+    }
+
+    // Un catálogo vacío significa "sin permiso": el botón de ese tipo no se muestra.
+    private async Task CargarCatalogosAsync()
+    {
+        if (_empleado is null) return;
+        var tareas = _tiposSolicitud.Select(t => ServicioGestiones.GetCatalogoAsync(t.Item1, _empleado.Empleado)).ToArray();
+        await Task.WhenAll(tareas);
+        for (int i = 0; i < _tiposSolicitud.Length; i++)
+            _catalogos[_tiposSolicitud[i].Item1] = tareas[i].Result.Datos ?? new();
+    }
+
+    private void AbrirSolicitud(byte tipo)
+    {
+        _tipoSolicitud = tipo;
+        _idGestionSel = _catalogos[tipo].Count > 0 ? _catalogos[tipo][0].IdGestion : 0;
+        _empleadoDestNum = _empleado?.Empleado;
+        _empleadoDest = _empleado;
+        _detalles = "";
+        _detallesConfirma = "";
+        _fechaIni = DateTime.Today.AddDays(1);
+        _fechaFin = null;
+        _firmando = null;
+        _aviso = "";
+    }
+
+    private async Task EnviarSolicitudAsync()
+    {
+        var gestion = GestionSel;
+        if (_enviandoSolicitud || gestion is null || _empleado is null || Sesion.Usuario is null) return;
+
+        // Validaciones del canon R3 antes de llamar al proc.
+        if (_empleadoDestNum is null or <= 0) { MostrarError("Introduce el nº de empleado para quien se solicita."); return; }
+        if (gestion.Detalles.Length > 0)
+        {
+            if (_detalles.Trim().Length == 0) { MostrarError($"Falta el dato: {gestion.Detalles}"); return; }
+            if (gestion.ConfirmarDato && _detalles.Trim() != _detallesConfirma.Trim()) { MostrarError("Los datos no coinciden."); return; }
+        }
+        DateTime fechaIni = DateTime.Today, fechaFin = new(1753, 1, 1);
+        if (gestion.IntroFechaIni)
+        {
+            fechaIni = _fechaIni.Date;
+            if (fechaIni <= DateTime.Today || fechaIni > DateTime.Today.AddDays(30))
+            { MostrarError("La fecha de inicio debe ser a partir de mañana y no superior a un mes."); return; }
+            if (gestion.PermiteFechaFin)
+            {
+                if (_fechaFin is null) { MostrarError("Falta la fecha fin."); return; }
+                fechaFin = _fechaFin.Value.Date;
+                if (fechaFin < fechaIni) { MostrarError("La fecha fin no puede ser anterior a la de inicio."); return; }
+                if ((fechaFin - fechaIni).Days > 120) { MostrarError("El periodo no puede superar 120 días."); return; }
+            }
+        }
+
+        _enviandoSolicitud = true;
+        _aviso = "";
+        try
+        {
+            // Si se solicita para otro empleado, se valida su número (nombre visible).
+            if (_empleadoDest is null || _empleadoDest.Empleado != _empleadoDestNum)
+            {
+                var validacion = await ServicioGestiones.GetEmpleadoAsync(_empleadoDestNum.Value);
+                if (!validacion.Ok || validacion.Datos is null || string.IsNullOrWhiteSpace(validacion.Datos.Nombre))
+                { MostrarError($"El empleado {_empleadoDestNum} no existe."); return; }
+                _empleadoDest = validacion.Datos;
+            }
+
+            var solicitud = new GestionSolicitudInsertDTO
+            {
+                UsuarioInsert = _empleado.Empleado,
+                Empleado = _empleadoDestNum.Value,
+                Alm = Sesion.Usuario.Almacen.CodAlm,
+                TipoGestion = _tipoSolicitud,
+                IdGestion = gestion.IdGestion,
+                Detalles = _detalles.Trim(),
+                FechaIni = fechaIni,
+                FechaFin = fechaFin
+            };
+            var respuesta = await ServicioGestiones.SolicitarAsync(solicitud);
+            if (!respuesta.Ok) { MostrarError(respuesta.Error); return; }
+
+            _tipoAviso = "exito";
+            _aviso = $"Solicitud «{gestion.DescGestion}» enviada al departamento correspondiente para su tramitación.";
+            _tipoSolicitud = 0;
+            _vista = 0;
+            await CargarAsync();
+        }
+        finally
+        {
+            _enviandoSolicitud = false;
+        }
     }
 
     private Task CambiarVistaAsync(byte vista)

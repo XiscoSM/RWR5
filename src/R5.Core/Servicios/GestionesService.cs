@@ -32,4 +32,12 @@ public sealed class GestionesService
     /// <summary>POST Gestiones/{empleado}/Firmar/{mov} — firma la gestión (el proc valida el nº).</summary>
     public Task<ApiRespuesta> FirmarAsync(int empleado, int mov, CancellationToken ct = default)
         => _api.PostAsync($"Gestiones/{empleado}/Firmar/{mov}", cuerpo: null, ct);
+
+    /// <summary>GET Gestiones/Catalogo/{tipo}?usuario= — gestiones solicitables (vacío = sin permiso).</summary>
+    public Task<ApiRespuesta<List<GestionEmpresa>>> GetCatalogoAsync(byte tipoGestion, int empleado, CancellationToken ct = default)
+        => _api.GetAsync<List<GestionEmpresa>>($"Gestiones/Catalogo/{tipoGestion}?usuario={empleado}", ct);
+
+    /// <summary>POST Gestiones/Solicitud — alta de solicitud (EPI, vacaciones, Madisa…).</summary>
+    public Task<ApiRespuesta> SolicitarAsync(GestionSolicitudInsertDTO solicitud, CancellationToken ct = default)
+        => _api.PostAsync("Gestiones/Solicitud", solicitud, ct);
 }
