@@ -71,9 +71,11 @@
             <h3>Cola del terminal @Sesion.Usuario?.NumTerminal</h3>
             <div class="r5-fila" style="margin-left:auto">
                 <button class="r5-btn r5-btn--fantasma" @onclick="CargarColaAsync" disabled="@_ocupado">Actualizar</button>
-                <button class="r5-btn r5-btn--peligro" @onclick="VaciarColaAsync" disabled="@(_ocupado || _cola.Count == 0)">
-                    Vaciar cola
-                </button>
+                <BotonConfirmar Texto="Vaciar cola" Peligro="true"
+                                Pregunta="@($"¿Vaciar las {_cola.Count} etiquetas pendientes del terminal?")"
+                                TextoOcupado="Vaciando…" Ocupado="@_ocupado"
+                                Deshabilitado="@(_cola.Count == 0)"
+                                OnConfirmar="VaciarColaAsync" />
             </div>
         </div>
 
@@ -189,6 +191,13 @@
     {
         if (!Sesion.Autenticado) return;
         var respuesta = await ServicioEtiquetas.GetColaAsync(Sesion.Usuario!.Almacen.CodAlm, Sesion.Usuario.NumTerminal);
+        if (!respuesta.Ok)
+        {
+            // Un fallo de red no debe disfrazarse de "cola vacía": se conserva la última
+            // cola conocida y se avisa.
+            MostrarError($"No se pudo leer la cola: {respuesta.Error}");
+            return;
+        }
         _cola = respuesta.Datos ?? new();
     }
 

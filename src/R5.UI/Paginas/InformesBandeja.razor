@@ -85,5 +85,5 @@
     }
 
     private void AbrirDetalle(Informe informe)
-        => Nav.NavigateTo($"/informes/{informe.NumInforme}");
+        => Nav.NavigateTo($"/informes/{informe.NumInforme}?reg={(informe.Estado ? 1 : 0)}");
 }

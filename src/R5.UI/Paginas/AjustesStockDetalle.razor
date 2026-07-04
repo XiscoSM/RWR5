@@ -7,10 +7,28 @@
 <GuardiaModulo CodMenu="5">
 <div class="r5-columna">
 
-    <div class="r5-fila">
+    <div class="r5-fila" style="flex-wrap: wrap;">
         <button class="r5-btn r5-btn--secundario" @onclick="Volver">← Ajustes</button>
         <h2>Ajuste @NumAjuste · @(_fecha?.ToString("dd/MM/yyyy"))</h2>
+        @if (Reg is not null)
+        {
+            <span class="r5-badge @(_registrado ? "r5-badge--cerrado" : "r5-badge--abierto")">
+                @(_registrado ? "Registrado" : "Pendiente")
+            </span>
+        }
+        @if (Reg == 0 && !_registrado)
+        {
+            <div class="r5-fila" style="margin-left:auto">
+                <BotonConfirmar Texto="Registrar ajuste"
+                                Pregunta="@($"¿Registrar el ajuste {NumAjuste} con {_lineas.Count} líneas? Mueve stock y coste, no se puede deshacer.")"
+                                TextoOcupado="Registrando…" Ocupado="@_registrando"
+                                Deshabilitado="@(_cargando || _lineas.Count == 0 || _error.Length > 0)"
+                                OnConfirmar="RegistrarAsync" />
+            </div>
+        }
     </div>
+
+    <Aviso Tipo="@_tipoAviso" Mensaje="@_aviso" />
 
     @if (_fecha is null)
     {
@@ -70,14 +88,49 @@
     [Parameter] public string FechaRuta { get; set; } = "";
     [Parameter] public int NumAjuste { get; set; }
 
+    /// <summary>Estado desde la bandeja (0=pendiente, 1=registrado); null en deep-link = solo consulta.</summary>
+    [Parameter, SupplyParameterFromQuery(Name = "reg")] public int? Reg { get; set; }
+
     private DateTime? _fecha;
     private bool _cargando = true;
     private string _error = "";
     private List<AjusteLin> _lineas = new();
 
+    private bool _registrado;
+    private bool _registrando;
+    private string _aviso = "";
+    private string _tipoAviso = "exito";
+
+    // Registra el ajuste pendiente: mueve stock/coste en RW (irreversible).
+    private async Task RegistrarAsync()
+    {
+        if (_registrando || _fecha is null || !Sesion.Autenticado) return;
+
+        _registrando = true;
+        _aviso = "";
+        try
+        {
+            var respuesta = await Ajustes.RegistrarAsync(NumAjuste, _fecha.Value, Sesion.Usuario!.CodUsuario);
+            if (!respuesta.Ok)
+            {
+                _tipoAviso = "error";
+                _aviso = respuesta.Error;
+                return;
+            }
+            _registrado = true;
+            _tipoAviso = "exito";
+            _aviso = $"Ajuste {NumAjuste} registrado.";
+        }
+        finally
+        {
+            _registrando = false;
+        }
+    }
+
     protected override async Task OnInitializedAsync()
     {
         if (!Sesion.Autenticado) return;
+        _registrado = Reg == 1;
 
         if (!DateTime.TryParseExact(FechaRuta, "yyyy-MM-dd", null,
             System.Globalization.DateTimeStyles.None, out var fecha))

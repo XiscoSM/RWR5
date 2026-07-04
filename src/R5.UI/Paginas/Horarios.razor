@@ -21,8 +21,8 @@
                 </select>
             </div>
             <div class="r5-segmento" style="align-self: flex-end;">
-                <button class="@(!_historico ? "activo" : "")" @onclick="() => CambiarHistoricoAsync(false)">Actual</button>
-                <button class="@(_historico ? "activo" : "")" @onclick="() => CambiarHistoricoAsync(true)">Histórico</button>
+                <button class="@(!_historico ? "activo" : "")" @onclick="() => CambiarHistoricoAsync(false)" disabled="@_cargando">Actual</button>
+                <button class="@(_historico ? "activo" : "")" @onclick="() => CambiarHistoricoAsync(true)" disabled="@_cargando">Histórico</button>
             </div>
             <button class="r5-btn r5-btn--secundario" style="margin-left:auto; align-self: flex-end;"
                     @onclick="AbrirPdfAsync" disabled="@(_generandoPdf || _semana is null || _semana.Filas.Count == 0)">

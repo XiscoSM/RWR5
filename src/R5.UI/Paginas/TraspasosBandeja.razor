@@ -11,8 +11,8 @@
 
     <div class="r5-fila">
         <div class="r5-segmento">
-            <button class="@(!_registrados ? "activo" : "")" @onclick="() => CambiarFiltroAsync(false)">Pendientes</button>
-            <button class="@(_registrados ? "activo" : "")" @onclick="() => CambiarFiltroAsync(true)">Registrados</button>
+            <button class="@(!_registrados ? "activo" : "")" @onclick="() => CambiarFiltroAsync(false)" disabled="@_cargando">Pendientes</button>
+            <button class="@(_registrados ? "activo" : "")" @onclick="() => CambiarFiltroAsync(true)" disabled="@_cargando">Registrados</button>
         </div>
         <button class="r5-btn r5-btn--primario" style="margin-left:auto"
                 @onclick="@(() => Nav.NavigateTo("/traspasos/alta"))">
@@ -102,5 +102,5 @@
     }
 
     private void AbrirDetalle(Traspaso traspaso)
-        => Nav.NavigateTo($"/traspasos/{traspaso.Fecha:yyyy-MM-dd}/{traspaso.NumTraspaso}");
+        => Nav.NavigateTo($"/traspasos/{traspaso.Fecha:yyyy-MM-dd}/{traspaso.NumTraspaso}?reg={(traspaso.Registrado ? 1 : 0)}");
 }

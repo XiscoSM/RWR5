@@ -43,9 +43,9 @@
 
         <div class="r5-fila" style="flex-wrap: wrap;">
             <div class="r5-segmento">
-                <button class="@(_vista == 0 ? "activo" : "")" @onclick="() => CambiarVistaAsync(0)">Pendientes de firma</button>
-                <button class="@(_vista == 1 ? "activo" : "")" @onclick="() => CambiarVistaAsync(1)">Firmadas</button>
-                <button class="@(_vista == 2 ? "activo" : "")" @onclick="() => CambiarVistaAsync(2)">Como responsable</button>
+                <button class="@(_vista == 0 ? "activo" : "")" @onclick="() => CambiarVistaAsync(0)" disabled="@_cargando">Pendientes de firma</button>
+                <button class="@(_vista == 1 ? "activo" : "")" @onclick="() => CambiarVistaAsync(1)" disabled="@_cargando">Firmadas</button>
+                <button class="@(_vista == 2 ? "activo" : "")" @onclick="() => CambiarVistaAsync(2)" disabled="@_cargando">Como responsable</button>
             </div>
             @* Solo aparecen los tipos con catálogo no vacío: mismo criterio de permiso que R3. *@
             <div class="r5-fila" style="margin-left:auto">

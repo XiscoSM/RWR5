@@ -8,6 +8,7 @@
 @inject DispositivoService Dispositivo
 @inject NavigationManager Nav
 @inject InfoApp Info
+@inject SesionUsuario Sesion
 
 <div class="r5-columna r5-ancho-form">
 
@@ -115,8 +116,13 @@
     private string _avisoEnrolar = "";
     private string _tipoAvisoEnrolar = "info";
 
+    // Copia de la config al entrar: Probar/Enrolar aplican cambios al singleton vivo
+    // (ApiWeb los necesita para componer la URL) y Cancelar debe poder revertirlos.
+    private readonly ConfiguracionApp _original = new();
+
     protected override void OnInitialized()
     {
+        _original.CopiarDe(Config);
         _entorno = Config.Entorno;
         _urlPersonalizada = Config.UrlPersonalizada;
         _numTerminal = Config.NumTerminal;
@@ -196,8 +202,15 @@
     {
         AplicarConfig();
         RepoConfig.Guardar(Config);
-        Salir();
+        Navegar();
     }
 
-    private void Salir() => Nav.NavigateTo("/login");
+    private void Salir()
+    {
+        // Cancelar revierte lo que Probar/Enrolar hubieran aplicado a la config viva.
+        Config.CopiarDe(_original);
+        Navegar();
+    }
+
+    private void Navegar() => Nav.NavigateTo(Sesion.Autenticado ? "/inicio" : "/login");
 }

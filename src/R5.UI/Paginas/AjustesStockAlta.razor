@@ -19,9 +19,10 @@
                 <span class="r5-chip" style="background: var(--c-primario-claro); color: var(--c-primario-osc);">
                     Ajuste @_numAjuste · @_lineasAnadidas líneas
                 </span>
-                <button class="r5-btn r5-btn--primario" @onclick="RegistrarAsync" disabled="@_registrando">
-                    @(_registrando ? "Registrando…" : "Registrar ajuste")
-                </button>
+                <BotonConfirmar Texto="Registrar ajuste"
+                                Pregunta="@($"¿Registrar el ajuste {_numAjuste} con {_lineasAnadidas} líneas? Mueve stock y coste, no se puede deshacer.")"
+                                TextoOcupado="Registrando…" Ocupado="@_registrando"
+                                OnConfirmar="RegistrarAsync" />
             </div>
         }
     </div>
@@ -226,6 +227,10 @@
     private async Task AnadirAsync()
     {
         if (_anadiendo || _linea is null || _tipoElegido is null || _cantidad <= 0) return;
+
+        // Tope de sanidad: una lectura del escaner caida en el campo cantidad (>=10.000)
+        // no puede acabar grabada como unidades.
+        if (_cantidad >= 10000) { MostrarError($"Cantidad {_cantidad} no valida: ¿has escaneado un codigo en el campo de cantidad?"); return; }
 
         _anadiendo = true;
         _aviso = "";

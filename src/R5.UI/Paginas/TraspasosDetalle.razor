@@ -9,16 +9,34 @@
 <GuardiaModulo CodMenu="11">
 <div class="r5-columna">
 
-    <div class="r5-fila">
+    <div class="r5-fila" style="flex-wrap: wrap;">
         <button class="r5-btn r5-btn--secundario" @onclick="Volver">← Traspasos</button>
         <h2>Traspaso @NumTraspaso · @(_fecha?.ToString("dd/MM/yyyy"))</h2>
-        <button class="r5-btn r5-btn--primario" style="margin-left:auto" @onclick="AbrirPdfAsync"
-                disabled="@(_generandoPdf || _fecha is null)">
-            <Icono Nombre="informes" Clase="r5-barra__icono" />
-            @(_generandoPdf ? "Generando…" : "PDF")
-        </button>
+        @if (Reg is not null)
+        {
+            <span class="r5-badge @(_registrado ? "r5-badge--cerrado" : "r5-badge--abierto")">
+                @(_registrado ? "Registrado" : "Pendiente")
+            </span>
+        }
+        <div class="r5-fila" style="margin-left:auto">
+            @* PDF es acción secundaria; la primaria del detalle de un pendiente es registrarlo. *@
+            <button class="r5-btn r5-btn--secundario" @onclick="AbrirPdfAsync"
+                    disabled="@(_generandoPdf || _fecha is null)">
+                <Icono Nombre="informes" Clase="r5-barra__icono" />
+                @(_generandoPdf ? "Generando…" : "PDF")
+            </button>
+            @if (Reg == 0 && !_registrado)
+            {
+                <BotonConfirmar Texto="Registrar traspaso"
+                                Pregunta="@($"¿Registrar el traspaso {NumTraspaso} con {_lineas.Count} líneas? Mueve el stock y no se puede deshacer.")"
+                                TextoOcupado="Registrando…" Ocupado="@_registrando"
+                                Deshabilitado="@(_cargando || _lineas.Count == 0 || _error.Length > 0)"
+                                OnConfirmar="RegistrarAsync" />
+            }
+        </div>
     </div>
 
+    <Aviso Tipo="@_tipoAviso" Mensaje="@_aviso" />
     <Aviso Mensaje="@_errorPdf" />
 
     @if (_fecha is null)
@@ -83,10 +101,44 @@
     [Parameter] public string FechaRuta { get; set; } = "";
     [Parameter] public int NumTraspaso { get; set; }
 
+    /// <summary>Estado desde la bandeja (0=pendiente, 1=registrado); null en deep-link = solo consulta.</summary>
+    [Parameter, SupplyParameterFromQuery(Name = "reg")] public int? Reg { get; set; }
+
     private DateTime? _fecha;
     private bool _cargando = true;
     private string _error = "";
     private List<TraspasoLin> _lineas = new();
+
+    private bool _registrado;
+    private bool _registrando;
+    private string _aviso = "";
+    private string _tipoAviso = "exito";
+
+    // Registrar el traspaso pendiente: mueve stock en RW (irreversible).
+    private async Task RegistrarAsync()
+    {
+        if (_registrando || _fecha is null || !Sesion.Autenticado) return;
+
+        _registrando = true;
+        _aviso = "";
+        try
+        {
+            var respuesta = await Traspasos.RegistrarAsync(NumTraspaso, _fecha.Value, Sesion.Usuario!.CodUsuario);
+            if (!respuesta.Ok)
+            {
+                _tipoAviso = "error";
+                _aviso = respuesta.Error;
+                return;
+            }
+            _registrado = true;
+            _tipoAviso = "exito";
+            _aviso = $"Traspaso {NumTraspaso} registrado.";
+        }
+        finally
+        {
+            _registrando = false;
+        }
+    }
 
     private bool _generandoPdf;
     private string _errorPdf = "";
@@ -121,6 +173,7 @@
     protected override async Task OnInitializedAsync()
     {
         if (!Sesion.Autenticado) return;
+        _registrado = Reg == 1;
 
         if (!DateTime.TryParseExact(FechaRuta, "yyyy-MM-dd", null,
             System.Globalization.DateTimeStyles.None, out var fecha))

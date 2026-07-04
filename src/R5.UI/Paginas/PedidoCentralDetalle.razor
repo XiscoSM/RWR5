@@ -21,9 +21,11 @@
         <div class="r5-fila" style="margin-left:auto">
             @if (_estado == 0)
             {
-                <button class="r5-btn r5-btn--primario" @onclick="RegistrarAsync" disabled="@_registrando">
-                    @(_registrando ? "Registrando…" : "Registrar pedido")
-                </button>
+                <BotonConfirmar Texto="Registrar pedido"
+                                Pregunta="@($"¿Registrar el pedido {NumPedido} con {_lineas.Count} líneas? Central lo preparará; ya no podrás añadir más.")"
+                                TextoOcupado="Registrando…" Ocupado="@_registrando"
+                                Deshabilitado="@(_cargando || _lineas.Count == 0)"
+                                OnConfirmar="RegistrarAsync" />
             }
             <button class="r5-btn r5-btn--secundario" @onclick="AbrirPdfAsync"
                     disabled="@(_generandoPdf || _fecha is null)">

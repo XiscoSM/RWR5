@@ -1,0 +1,46 @@
+@* Acción irreversible en dos pasos, inline: primer toque muestra la pregunta,
+   el segundo ejecuta. Estándar de la app para registrar/finalizar/vaciar —
+   evita el registro accidental con guantes sin el coste de un diálogo modal. *@
+
+@if (!_confirmando)
+{
+    <button class="r5-btn @(Peligro ? "r5-btn--peligro" : "r5-btn--primario")"
+            @onclick="() => _confirmando = true" disabled="@(Ocupado || Deshabilitado)">
+        @Texto
+    </button>
+}
+else
+{
+    <span class="r5-texto-suave">@Pregunta</span>
+    <button class="r5-btn r5-btn--primario" @onclick="ConfirmarAsync" disabled="@Ocupado">
+        @(Ocupado ? TextoOcupado : "Sí")
+    </button>
+    <button class="r5-btn r5-btn--fantasma" @onclick="() => _confirmando = false" disabled="@Ocupado">No</button>
+}
+
+@code {
+    /// <summary>Texto del botón inicial (p. ej. "Registrar traspaso").</summary>
+    [Parameter, EditorRequired] public string Texto { get; set; } = "";
+
+    /// <summary>Pregunta de confirmación con el resumen de lo que va a pasar.</summary>
+    [Parameter, EditorRequired] public string Pregunta { get; set; } = "";
+
+    /// <summary>Texto mientras se ejecuta (p. ej. "Registrando…").</summary>
+    [Parameter] public string TextoOcupado { get; set; } = "…";
+
+    [Parameter] public bool Ocupado { get; set; }
+    [Parameter] public bool Deshabilitado { get; set; }
+
+    /// <summary>Pinta el botón inicial como destructivo (r5-btn--peligro).</summary>
+    [Parameter] public bool Peligro { get; set; }
+
+    [Parameter, EditorRequired] public EventCallback OnConfirmar { get; set; }
+
+    private bool _confirmando;
+
+    private async Task ConfirmarAsync()
+    {
+        await OnConfirmar.InvokeAsync();
+        _confirmando = false;
+    }
+}

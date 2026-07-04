@@ -7,25 +7,37 @@
 <GuardiaModulo CodMenu="8">
 <div class="r5-columna">
 
-    <div class="r5-fila">
+    <div class="r5-fila" style="flex-wrap: wrap;">
         <button class="r5-btn r5-btn--secundario" @onclick="Volver">← Pedidos</button>
         <h2>Pedido @NumPedido</h2>
+        @if (Reg is not null)
+        {
+            <span class="r5-badge @(_registrado ? "r5-badge--cerrado" : "r5-badge--abierto")">
+                @(_registrado ? "Registrado" : "Pendiente")
+            </span>
+        }
         @if (_lineas.Count > 0)
         {
-            <div class="r5-fila" style="margin-left:auto">
-                @if (!_confirmarMail)
+            <div class="r5-fila" style="margin-left:auto; flex-wrap: wrap;">
+                @if (Reg == 0 && !_registrado)
                 {
-                    <button class="r5-btn r5-btn--secundario" @onclick="() => _confirmarMail = true" disabled="@_enviandoMail">
-                        Enviar al proveedor
-                    </button>
+                    @* Pendiente: la acción del detalle es completar el registro (envío previsto mañana). *@
+                    <div class="r5-campo">
+                        <label for="fechaPrevEnvio">Envío previsto</label>
+                        <input id="fechaPrevEnvio" class="r5-input" type="date" @bind="_fechaPrevEnvio" disabled="@_registrando" />
+                    </div>
+                    <BotonConfirmar Texto="Registrar pedido"
+                                    Pregunta="@($"¿Registrar el pedido {NumPedido} con {_lineas.Count} líneas? No se puede deshacer.")"
+                                    TextoOcupado="Registrando…" Ocupado="@_registrando"
+                                    OnConfirmar="RegistrarAsync" />
                 }
-                else
+                else if (Reg is null || _registrado)
                 {
-                    <span class="r5-texto-suave">¿Encolar el mail al proveedor?</span>
-                    <button class="r5-btn r5-btn--primario" @onclick="EnviarMailAsync" disabled="@_enviandoMail">
-                        @(_enviandoMail ? "Enviando…" : "Sí, enviar")
-                    </button>
-                    <button class="r5-btn r5-btn--fantasma" @onclick="() => _confirmarMail = false" disabled="@_enviandoMail">No</button>
+                    @* El mail al proveedor solo tiene sentido con el pedido registrado. *@
+                    <BotonConfirmar Texto="Enviar al proveedor"
+                                    Pregunta="¿Encolar el mail al proveedor?"
+                                    TextoOcupado="Enviando…" Ocupado="@_enviandoMail"
+                                    OnConfirmar="EnviarMailAsync" />
                 }
             </div>
         }
@@ -90,18 +102,50 @@
 @code {
     [Parameter] public int NumPedido { get; set; }
 
+    /// <summary>Estado desde la bandeja (0=pendiente, 1=registrado); null en deep-link.</summary>
+    [Parameter, SupplyParameterFromQuery(Name = "reg")] public int? Reg { get; set; }
+
     private bool _cargando = true;
     private string _error = "";
     private List<PedidoCompraLin> _lineas = new();
 
-    private bool _confirmarMail;
+    private bool _registrado;
+    private bool _registrando;
+    private DateTime _fechaPrevEnvio = DateTime.Today.AddDays(1);
     private bool _enviandoMail;
     private string _aviso = "";
     private string _tipoAviso = "error";
 
+    // Registra el pedido pendiente (irreversible); después ya se puede enviar al proveedor.
+    private async Task RegistrarAsync()
+    {
+        if (_registrando || !Sesion.Autenticado) return;
+
+        _registrando = true;
+        _aviso = "";
+        try
+        {
+            var respuesta = await Pedidos.RegistrarAsync(NumPedido, Sesion.Usuario!.CodUsuario, _fechaPrevEnvio);
+            if (!respuesta.Ok)
+            {
+                _tipoAviso = "error";
+                _aviso = respuesta.Error;
+                return;
+            }
+            _registrado = true;
+            _tipoAviso = "exito";
+            _aviso = $"Pedido {NumPedido} registrado. Ya puedes enviarlo al proveedor.";
+        }
+        finally
+        {
+            _registrando = false;
+        }
+    }
+
     protected override async Task OnInitializedAsync()
     {
         if (!Sesion.Autenticado) return;
+        _registrado = Reg == 1;
 
         try
         {
@@ -139,7 +183,6 @@
             _aviso = string.IsNullOrWhiteSpace(respuesta.Datos)
                 ? $"Pedido {NumPedido} encolado para envío al proveedor."
                 : respuesta.Datos;
-            _confirmarMail = false;
         }
         finally
         {

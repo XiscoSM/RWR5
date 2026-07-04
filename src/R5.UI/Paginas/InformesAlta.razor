@@ -20,9 +20,10 @@
                 <span class="r5-chip" style="background: var(--c-primario-claro); color: var(--c-primario-osc);">
                     Informe @_numInforme · @_lineasAnadidas líneas
                 </span>
-                <button class="r5-btn r5-btn--primario" @onclick="RegistrarAsync" disabled="@_registrando">
-                    @(_registrando ? "Registrando…" : "Registrar informe")
-                </button>
+                <BotonConfirmar Texto="Registrar informe"
+                                Pregunta="@($"¿Registrar el informe {_numInforme} con {_lineasAnadidas} líneas?")"
+                                TextoOcupado="Registrando…" Ocupado="@_registrando"
+                                OnConfirmar="RegistrarAsync" />
             </div>
         }
     </div>

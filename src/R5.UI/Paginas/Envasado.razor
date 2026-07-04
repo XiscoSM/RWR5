@@ -156,7 +156,25 @@
     {
         if (_codAlmDest <= 0) return;
         var respuesta = await Almacenes.GetAsync(_codAlmDest);
-        _descAlmDest = respuesta.Datos?.CodAlm > 0 ? respuesta.Datos.DescAlm : "(no existe)";
+        if (!respuesta.Ok)
+        {
+            _descAlmDest = "";
+            MostrarError($"No se pudo validar el almacén: {respuesta.Error}");
+            return;
+        }
+        _descAlmDest = respuesta.Datos?.CodAlm > 0 ? respuesta.Datos!.DescAlm : "(no existe)";
+
+        // Los envasables y su PVP se consultaron para el destino anterior: cambiar de
+        // almacén con un lote cargado obliga a re-escanear (si no, la etiqueta saldría
+        // con el precio de un almacén y el destino de otro).
+        if (_lote is not null || _seleccionado is not null)
+        {
+            _lote = null;
+            _seleccionado = null;
+            _envasables = new();
+            _tipoAviso = "info";
+            _aviso = "Destino cambiado: vuelve a escanear el lote para recargar los precios.";
+        }
     }
 
     private async Task EscanearLoteAsync()

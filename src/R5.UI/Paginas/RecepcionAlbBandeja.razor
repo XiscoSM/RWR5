@@ -11,8 +11,8 @@
 
     <div class="r5-fila">
         <div class="r5-segmento">
-            <button class="@(!_registrados ? "activo" : "")" @onclick="() => CambiarFiltroAsync(false)">Pendientes</button>
-            <button class="@(_registrados ? "activo" : "")" @onclick="() => CambiarFiltroAsync(true)">Registrados</button>
+            <button class="@(!_registrados ? "activo" : "")" @onclick="() => CambiarFiltroAsync(false)" disabled="@_cargando">Pendientes</button>
+            <button class="@(_registrados ? "activo" : "")" @onclick="() => CambiarFiltroAsync(true)" disabled="@_cargando">Registrados</button>
         </div>
         <button class="r5-btn r5-btn--primario" style="margin-left:auto"
                 @onclick="@(() => Nav.NavigateTo("/recepcionAlb/alta"))">
@@ -111,5 +111,5 @@
     }
 
     private void AbrirDetalle(Albaran albaran)
-        => Nav.NavigateTo($"/recepcionAlb/{albaran.Fecha:yyyy-MM-dd}/{albaran.NumAlbaran}");
+        => Nav.NavigateTo($"/recepcionAlb/{albaran.Fecha:yyyy-MM-dd}/{albaran.NumAlbaran}?reg={(albaran.Reg ? 1 : 0)}");
 }

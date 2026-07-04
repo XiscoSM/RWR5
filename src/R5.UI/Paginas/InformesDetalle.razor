@@ -8,10 +8,28 @@
 <GuardiaModulo CodMenu="22">
 <div class="r5-columna">
 
-    <div class="r5-fila">
+    <div class="r5-fila" style="flex-wrap: wrap;">
         <button class="r5-btn r5-btn--secundario" @onclick="Volver">← Informes</button>
         <h2>Informe @NumInforme@(_tipo?.DescTipo is null ? "" : $" · {_tipo.DescTipo}")</h2>
+        @if (Reg is not null)
+        {
+            <span class="r5-badge @(_registrado ? "r5-badge--cerrado" : "r5-badge--abierto")">
+                @(_registrado ? "Registrado" : "Pendiente")
+            </span>
+        }
+        @if (Reg == 0 && !_registrado)
+        {
+            <div class="r5-fila" style="margin-left:auto">
+                <BotonConfirmar Texto="Registrar informe"
+                                Pregunta="@($"¿Registrar el informe {NumInforme} con {_lineas.Count} líneas?")"
+                                TextoOcupado="Registrando…" Ocupado="@_registrando"
+                                Deshabilitado="@(_cargando || _lineas.Count == 0 || _error.Length > 0)"
+                                OnConfirmar="RegistrarAsync" />
+            </div>
+        }
     </div>
+
+    <Aviso Tipo="@_tipoAviso" Mensaje="@_aviso" />
 
     @if (_cargando)
     {
@@ -76,10 +94,44 @@
 @code {
     [Parameter] public int NumInforme { get; set; }
 
+    /// <summary>Estado desde la bandeja (0=pendiente, 1=registrado); null en deep-link = solo consulta.</summary>
+    [Parameter, SupplyParameterFromQuery(Name = "reg")] public int? Reg { get; set; }
+
     private bool _cargando = true;
     private string _error = "";
     private TipoInforme? _tipo;
     private List<InformeLin> _lineas = new();
+
+    private bool _registrado;
+    private bool _registrando;
+    private string _aviso = "";
+    private string _tipoAviso = "exito";
+
+    // Registra el informe pendiente (consolida el documento en RW).
+    private async Task RegistrarAsync()
+    {
+        if (_registrando || !Sesion.Autenticado) return;
+
+        _registrando = true;
+        _aviso = "";
+        try
+        {
+            var respuesta = await Informes.RegistrarAsync(NumInforme);
+            if (!respuesta.Ok)
+            {
+                _tipoAviso = "error";
+                _aviso = respuesta.Error;
+                return;
+            }
+            _registrado = true;
+            _tipoAviso = "exito";
+            _aviso = $"Informe {NumInforme} registrado.";
+        }
+        finally
+        {
+            _registrando = false;
+        }
+    }
 
     // Visibilidad por tipo (0 oculto); si no hay tipo, se muestra lo que tenga datos.
     private bool VerCajas => _tipo?.Cajas is null or > 0;
@@ -97,6 +149,7 @@
     protected override async Task OnInitializedAsync()
     {
         if (!Sesion.Autenticado) return;
+        _registrado = Reg == 1;
 
         try
         {

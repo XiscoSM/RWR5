@@ -8,6 +8,12 @@
 
 <div class="r5-shell">
     <header class="r5-barra">
+        @if (Sesion.Autenticado && !_enInicio)
+        {
+            <button class="r5-btn r5-btn--fantasma r5-barra__inicio" title="Ir a Inicio" @onclick='() => Nav.NavigateTo("/inicio")'>
+                <Icono Nombre="inicio" Clase="r5-barra__icono" />
+            </button>
+        }
         <span class="r5-barra__titulo">@_titulo</span>
 
         <div class="r5-barra__derecha">
@@ -47,6 +53,7 @@
 @code {
     private bool _hayInternet = true;
     private string _titulo = "RW R5";
+    private bool _enInicio = true;
 
     protected override void OnInitialized()
     {
@@ -74,6 +81,7 @@
     private void ActualizarTitulo()
     {
         string ruta = Nav.ToBaseRelativePath(Nav.Uri).TrimEnd('/').ToLowerInvariant();
+        _enInicio = ruta is "" or "inicio" or "login";
         _titulo = ruta switch
         {
             "" or "inicio" => "Inicio",

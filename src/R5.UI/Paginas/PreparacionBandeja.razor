@@ -11,8 +11,8 @@
 
     <div class="r5-fila">
         <div class="r5-segmento">
-            <button class="@(!_verCerrados ? "activo" : "")" @onclick="() => CambiarVistaAsync(false)">Mis preparaciones</button>
-            <button class="@(_verCerrados ? "activo" : "")" @onclick="() => CambiarVistaAsync(true)">Pedidos cerrados</button>
+            <button class="@(!_verCerrados ? "activo" : "")" @onclick="() => CambiarVistaAsync(false)" disabled="@_cargando">Mis preparaciones</button>
+            <button class="@(_verCerrados ? "activo" : "")" @onclick="() => CambiarVistaAsync(true)" disabled="@_cargando">Pedidos cerrados</button>
         </div>
     </div>
 

@@ -8,13 +8,21 @@
 <GuardiaModulo CodMenu="9">
 <div class="r5-columna">
 
-    <div class="r5-fila">
+    <div class="r5-fila" style="flex-wrap: wrap;">
         <button class="r5-btn r5-btn--secundario" @onclick="Volver">← Albaranes</button>
         <h2>Albarán @NumAlbaran · @(_fecha?.ToString("dd/MM/yyyy"))</h2>
-        @if (!_registrado)
+        @if (Reg is not null)
+        {
+            <span class="r5-badge @(_registrado ? "r5-badge--cerrado" : "r5-badge--abierto")">
+                @(_registrado ? "Registrado" : "Pendiente")
+            </span>
+        }
+        @* Solo se ofrece registrar lo que la bandeja marca como pendiente: un albarán ya
+           registrado no debe invitar a un segundo registro. *@
+        @if (Reg == 0 && !_registrado)
         {
             <button class="r5-btn r5-btn--primario" style="margin-left:auto"
-                    @onclick="() => _pidiendoLink = !_pidiendoLink" disabled="@(_fecha is null)">
+                    @onclick="AbrirFormularioLink" disabled="@(_fecha is null || _cargando || _lineas.Count == 0)">
                 Registrar recepción
             </button>
         }
@@ -105,6 +113,9 @@
     [Parameter] public string FechaRuta { get; set; } = "";
     [Parameter] public int NumAlbaran { get; set; }
 
+    /// <summary>Estado desde la bandeja (0=pendiente, 1=registrado); null en deep-link = solo consulta.</summary>
+    [Parameter, SupplyParameterFromQuery(Name = "reg")] public int? Reg { get; set; }
+
     private DateTime? _fecha;
     private bool _cargando = true;
     private string _error = "";
@@ -116,6 +127,14 @@
     private string _linkTexto = "";
     private string _avisoRegistro = "";
     private string _tipoAvisoRegistro = "error";
+
+    // Abre el formulario de link con el campo limpio y enfocado (lectura de escáner).
+    private void AbrirFormularioLink()
+    {
+        _pidiendoLink = !_pidiendoLink;
+        _linkTexto = "";
+        _avisoRegistro = "";
+    }
 
     // Registrar la recepción pendiente: exige el link del documento en papel.
     private async Task RegistrarAsync()
@@ -131,6 +150,7 @@
             {
                 _tipoAvisoRegistro = "error";
                 _avisoRegistro = respuesta.Error;
+                _linkTexto = ""; // el siguiente escaneo no debe concatenar sobre el link fallido
                 return;
             }
             _registrado = true;
@@ -147,6 +167,7 @@
     protected override async Task OnInitializedAsync()
     {
         if (!Sesion.Autenticado) return;
+        _registrado = Reg == 1;
 
         if (!DateTime.TryParseExact(FechaRuta, "yyyy-MM-dd", null,
             System.Globalization.DateTimeStyles.None, out var fecha))

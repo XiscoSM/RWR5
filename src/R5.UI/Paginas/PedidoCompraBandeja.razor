@@ -10,8 +10,8 @@
 
     <div class="r5-fila">
         <div class="r5-segmento">
-            <button class="@(!_registrados ? "activo" : "")" @onclick="() => CambiarFiltroAsync(false)">Pendientes</button>
-            <button class="@(_registrados ? "activo" : "")" @onclick="() => CambiarFiltroAsync(true)">Registrados</button>
+            <button class="@(!_registrados ? "activo" : "")" @onclick="() => CambiarFiltroAsync(false)" disabled="@_cargando">Pendientes</button>
+            <button class="@(_registrados ? "activo" : "")" @onclick="() => CambiarFiltroAsync(true)" disabled="@_cargando">Registrados</button>
         </div>
         <button class="r5-btn r5-btn--primario" style="margin-left:auto"
                 @onclick="@(() => Nav.NavigateTo("/pedidoCompra/alta"))">
@@ -103,5 +103,5 @@
     }
 
     private void AbrirDetalle(PedidoCompra pedido)
-        => Nav.NavigateTo($"/pedidoCompra/{pedido.NumPedido}");
+        => Nav.NavigateTo($"/pedidoCompra/{pedido.NumPedido}?reg={(pedido.Reg ? 1 : 0)}");
 }

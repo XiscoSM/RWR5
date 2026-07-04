@@ -12,8 +12,8 @@
 
     <div class="r5-fila">
         <div class="r5-segmento">
-            <button class="@(_estado == 0 ? "activo" : "")" @onclick="() => CambiarEstadoAsync(0)">Abiertos</button>
-            <button class="@(_estado == 1 ? "activo" : "")" @onclick="() => CambiarEstadoAsync(1)">Cerrados</button>
+            <button class="@(_estado == 0 ? "activo" : "")" @onclick="() => CambiarEstadoAsync(0)" disabled="@_cargando">Abiertos</button>
+            <button class="@(_estado == 1 ? "activo" : "")" @onclick="() => CambiarEstadoAsync(1)" disabled="@_cargando">Cerrados</button>
         </div>
         <button class="r5-btn r5-btn--primario" style="margin-left:auto"
                 @onclick="@(() => Nav.NavigateTo("/pedidoCentral/alta"))">
