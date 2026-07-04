@@ -18,14 +18,23 @@
         {
             <span class="r5-badge @(_estado == 0 ? "r5-badge--abierto" : "r5-badge--cerrado")">@DescEstado</span>
         }
-        <button class="r5-btn r5-btn--primario" style="margin-left:auto" @onclick="AbrirPdfAsync"
-                disabled="@(_generandoPdf || _fecha is null)">
-            <Icono Nombre="informes" Clase="r5-barra__icono" />
-            @(_generandoPdf ? "Generando…" : "PDF")
-        </button>
+        <div class="r5-fila" style="margin-left:auto">
+            @if (_estado == 0)
+            {
+                <button class="r5-btn r5-btn--primario" @onclick="RegistrarAsync" disabled="@_registrando">
+                    @(_registrando ? "Registrando…" : "Registrar pedido")
+                </button>
+            }
+            <button class="r5-btn r5-btn--secundario" @onclick="AbrirPdfAsync"
+                    disabled="@(_generandoPdf || _fecha is null)">
+                <Icono Nombre="informes" Clase="r5-barra__icono" />
+                @(_generandoPdf ? "Generando…" : "PDF")
+            </button>
+        </div>
     </div>
 
     <Aviso Mensaje="@_errorPdf" />
+    <Aviso Tipo="@_tipoAvisoRegistro" Mensaje="@_avisoRegistro" />
 
     @if (_fecha is null)
     {
@@ -103,6 +112,36 @@
 
     private bool _generandoPdf;
     private string _errorPdf = "";
+
+    private bool _registrando;
+    private string _avisoRegistro = "";
+    private string _tipoAvisoRegistro = "error";
+
+    // Registrar = cerrar el pedido para que central lo prepare. Irreversible desde la app.
+    private async Task RegistrarAsync()
+    {
+        if (_registrando || _fecha is null) return;
+
+        _registrando = true;
+        _avisoRegistro = "";
+        try
+        {
+            var respuesta = await Pedidos.RegistrarAsync(Sesion.Usuario!.Almacen.CodAlm, _fecha.Value, NumPedido);
+            if (!respuesta.Ok)
+            {
+                _tipoAvisoRegistro = "error";
+                _avisoRegistro = respuesta.Error;
+                return;
+            }
+            _estado = 1;
+            _tipoAvisoRegistro = "exito";
+            _avisoRegistro = $"Pedido {NumPedido} registrado. Central lo recibirá para preparación.";
+        }
+        finally
+        {
+            _registrando = false;
+        }
+    }
 
     private async Task AbrirPdfAsync()
     {

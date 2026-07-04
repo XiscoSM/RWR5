@@ -1,0 +1,237 @@
+@* Alta de pedido a central: el operario de tienda escanea productos y pide.
+   Elige centro de distribución una vez (chips), escanea, ve lo que decide
+   (stock local, stock en central, ya pedido) y confirma cantidad con atajos
+   de caja. Tras añadir, el foco vuelve al buscador para encadenar escaneos. *@
+@page "/pedidoCentral/alta"
+@inject PedidoCentralService Pedidos
+@inject SesionUsuario Sesion
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<GuardiaModulo CodMenu="19">
+<div class="r5-columna">
+
+    <div class="r5-fila">
+        <button class="r5-btn r5-btn--secundario" @onclick="Volver">← Pedidos</button>
+        <h2>Añadir a pedido</h2>
+        @if (_ultimoPedido > 0)
+        {
+            <button class="r5-btn r5-btn--fantasma" style="margin-left:auto" @onclick="VerPedido">
+                Ver pedido @_ultimoPedido →
+            </button>
+        }
+    </div>
+
+    <div class="r5-tarjeta r5-columna">
+        <div class="r5-campo">
+            <label>Centro de distribución</label>
+            @if (_centros.Count == 0)
+            {
+                <span class="r5-texto-suave">Cargando centros…</span>
+            }
+            else
+            {
+                <div class="r5-segmento">
+                    @foreach (var centro in _centros)
+                    {
+                        <button @key="centro.CentroDist" class="@(_centroDist == centro.CentroDist ? "activo" : "")"
+                                @onclick="() => _centroDist = centro.CentroDist">
+                            @centro.DescCentroDist
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+
+        <form @onsubmit="BuscarAsync" class="r5-buscador">
+            <input id="busquedaPedido" class="r5-input" type="text" inputmode="numeric"
+                   placeholder="Escanea un EAN o teclea el código de producto"
+                   @bind="_codigo" @bind:event="oninput" autofocus disabled="@_ocupado" />
+            <button type="submit" class="r5-btn r5-btn--primario" disabled="@(_ocupado || string.IsNullOrWhiteSpace(_codigo))">
+                Buscar
+            </button>
+        </form>
+    </div>
+
+    <Aviso Tipo="@_tipoAviso" Mensaje="@_aviso" />
+
+    @if (_ocupado)
+    {
+        <Cargando />
+    }
+    else if (_linea is not null && _dto is not null)
+    {
+        <div class="r5-tarjeta r5-columna">
+            <div class="r5-fila">
+                <div class="r5-ficha__identidad">
+                    <span class="r5-ficha__codigo">@_linea.Prod.CodProd</span>
+                    <span class="r5-ficha__nombre">@_linea.Prod.DescProd</span>
+                </div>
+            </div>
+
+            <dl class="r5-datos">
+                <div><dt>Stock tienda</dt><dd>@Cantidad(_linea.StockAlm, _linea.Prod.DecimalesEnCant)</dd></div>
+                <div><dt>Stock central</dt><dd>@Cantidad(_dto.StockAlmCentral, _linea.Prod.DecimalesEnCant)</dd></div>
+                @if (_dto.CantYaPedida > 0)
+                {
+                    <div><dt>Ya pedida (pedido abierto)</dt><dd>@Cantidad(_dto.CantYaPedida, _linea.Prod.DecimalesEnCant)</dd></div>
+                }
+                <div><dt>Unidades por caja</dt><dd>@_linea.Prod.UnidsCaja</dd></div>
+            </dl>
+
+            <div class="r5-campo">
+                <label for="cantidad">Cantidad a pedir</label>
+                <div class="r5-fila">
+                    <button class="r5-btn r5-btn--secundario" @onclick="() => SumarCajas(-1)"
+                            disabled="@(_cantidad < _linea.Prod.UnidsCaja)">− caja</button>
+                    <input id="cantidad" class="r5-input r5-input--numero" type="number" inputmode="decimal"
+                           step="@(_linea.Prod.DecimalesEnCant ? "0.001" : "1")" min="0"
+                           @bind="_cantidad" @bind:event="oninput" />
+                    <button class="r5-btn r5-btn--secundario" @onclick="() => SumarCajas(1)">+ caja (@_linea.Prod.UnidsCaja)</button>
+                </div>
+            </div>
+
+            <button class="r5-btn r5-btn--primario r5-btn--bloque" @onclick="AnadirAsync"
+                    disabled="@(_anadiendo || _cantidad <= 0)">
+                @(_anadiendo ? "Añadiendo…" : $"Añadir {Cantidad(_cantidad, _linea.Prod.DecimalesEnCant)} al pedido")
+            </button>
+        </div>
+    }
+</div>
+</GuardiaModulo>
+
+@code {
+    private List<CentroDistribucion> _centros = new();
+    private byte _centroDist = 1;
+    private string _codigo = "";
+    private bool _ocupado;
+    private bool _anadiendo;
+    private string _aviso = "";
+    private string _tipoAviso = "error";
+
+    private PedidoCentralLin? _linea;
+    private PedidoCentralLineaSelectDTO? _dto;
+    private decimal _cantidad;
+    private int _ultimoPedido;
+    private DateTime _ultimaFecha;
+    private short _ultimoAlmCentral;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var centros = await Pedidos.GetCentrosDistAsync();
+        if (centros.Ok && centros.Datos is not null && centros.Datos.Count > 0)
+        {
+            _centros = centros.Datos;
+            _centroDist = _centros[0].CentroDist;
+        }
+    }
+
+    private void SumarCajas(int cajas)
+    {
+        if (_linea is null) return;
+        decimal nueva = _cantidad + cajas * _linea.Prod.UnidsCaja;
+        _cantidad = nueva < 0 ? 0 : nueva;
+    }
+
+    private async Task BuscarAsync()
+    {
+        string codigo = _codigo.Trim();
+        if (_ocupado || codigo.Length == 0 || !Sesion.Autenticado) return;
+
+        _ocupado = true;
+        _aviso = "";
+        _linea = null;
+        _dto = null;
+        try
+        {
+            short codAlm = Sesion.Usuario!.Almacen.CodAlm;
+
+            ApiRespuesta<PedidoCentralLin> respuesta;
+            if (codigo.Length >= 8 && long.TryParse(codigo, out long ean))
+            {
+                respuesta = await Pedidos.GetLineaPorEanAsync(codAlm, ean);
+            }
+            else if (int.TryParse(codigo, out int codProd) && codProd > 0)
+            {
+                respuesta = await Pedidos.GetLineaPorProdAsync(codAlm, codProd);
+            }
+            else
+            {
+                MostrarError("Introduce un código numérico (producto o EAN).");
+                return;
+            }
+
+            if (!respuesta.Ok || respuesta.Datos is null) { MostrarError(respuesta.Error); return; }
+            if (respuesta.Datos.Prod.CodProd <= 0) { MostrarError($"El código {codigo} no corresponde a ningún producto."); return; }
+
+            var dto = await Pedidos.GetLineaDtoAsync(codAlm, respuesta.Datos.Prod.CodProd,
+                Sesion.Usuario.CodUsuario, _centroDist, 0);
+            if (!dto.Ok || dto.Datos is null) { MostrarError(dto.Error); return; }
+            if (dto.Datos.CodAlmCentral <= 0)
+            {
+                MostrarError($"El centro seleccionado no sirve este producto. Prueba con otro centro de distribución.");
+                return;
+            }
+
+            _linea = respuesta.Datos;
+            _dto = dto.Datos;
+            // Arranque táctil: una caja por defecto (lo más habitual al pedir a central).
+            _cantidad = _linea.Prod.UnidsCaja;
+        }
+        finally
+        {
+            _ocupado = false;
+            StateHasChanged();
+            await JS.InvokeVoidAsync("r5.seleccionar", "busquedaPedido");
+        }
+    }
+
+    private async Task AnadirAsync()
+    {
+        if (_anadiendo || _linea is null || _dto is null || _cantidad <= 0) return;
+
+        _anadiendo = true;
+        _aviso = "";
+        try
+        {
+            var alta = new PedidoCentralLinInsertDTO
+            {
+                CodProd = _linea.Prod.CodProd,
+                CodUsuario = Sesion.Usuario!.CodUsuario,
+                CodAlm = Sesion.Usuario.Almacen.CodAlm,
+                CodAlmCentral = _dto.CodAlmCentral,
+                CantPedida = _cantidad,
+                Fecha = _dto.Fecha,
+                NumPedido = _dto.NumPedido
+            };
+            var respuesta = await Pedidos.PostLineaAsync(alta);
+            if (!respuesta.Ok || respuesta.Datos is null) { MostrarError(respuesta.Error); return; }
+
+            _ultimoPedido = respuesta.Datos.NumPedido;
+            _ultimaFecha = respuesta.Datos.Fecha;
+            _ultimoAlmCentral = _dto.CodAlmCentral;
+            _tipoAviso = "exito";
+            _aviso = $"{_linea.Prod.DescProd}: {Cantidad(_cantidad, _linea.Prod.DecimalesEnCant)} añadido al pedido {_ultimoPedido}.";
+            _linea = null;
+            _dto = null;
+            _codigo = "";
+        }
+        finally
+        {
+            _anadiendo = false;
+            StateHasChanged();
+            await JS.InvokeVoidAsync("r5.seleccionar", "busquedaPedido");
+        }
+    }
+
+    private void MostrarError(string mensaje)
+    {
+        _tipoAviso = "error";
+        _aviso = mensaje;
+    }
+
+    private void Volver() => Nav.NavigateTo("/pedidoCentral");
+
+    private void VerPedido()
+        => Nav.NavigateTo($"/pedidoCentral/{_ultimaFecha:yyyy-MM-dd}/{_ultimoPedido}?estado=0&almCentral={_ultimoAlmCentral}");
+}
