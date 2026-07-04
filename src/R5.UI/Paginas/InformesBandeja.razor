@@ -7,6 +7,13 @@
 <GuardiaModulo CodMenu="22">
 <div class="r5-columna">
 
+    <div class="r5-fila">
+        <button class="r5-btn r5-btn--primario" style="margin-left:auto"
+                @onclick="@(() => Nav.NavigateTo("/informes/alta"))">
+            + Nuevo informe
+        </button>
+    </div>
+
     @if (_cargando)
     {
         <Cargando Texto="Cargando informes…" />

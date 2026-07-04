@@ -106,6 +106,12 @@
             await Task.WhenAll(tareaInforme, tareaLineas);
 
             _tipo = tareaInforme.Result.Datos?.TipoInforme;
+            // La cabecera trae el tipo sin su configuración de campos: se completa del catálogo.
+            if (_tipo is not null)
+            {
+                var tipos = await Informes.GetTiposAsync();
+                _tipo = tipos.Datos?.FirstOrDefault(t => t.Tipo == _tipo.Tipo) ?? _tipo;
+            }
             if (!tareaLineas.Result.Ok)
             {
                 _error = tareaLineas.Result.Error;

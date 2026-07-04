@@ -1,0 +1,363 @@
+@* Alta de informe manual: el TIPO define qué campos se piden por línea (cajas,
+   cantidad, hasta 3 precios y 3 valores, con su etiqueta y obligatoriedad) —
+   la pantalla se adapta igual que hace R3. Escaneo encadenado; el tipo con
+   RellenarCampos precarga los valores desde la BD. *@
+@page "/informes/alta"
+@inject InformeService Informes
+@inject SesionUsuario Sesion
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<GuardiaModulo CodMenu="22">
+<div class="r5-columna">
+
+    <div class="r5-fila">
+        <button class="r5-btn r5-btn--secundario" @onclick="Volver">← Informes</button>
+        <h2>Nuevo informe</h2>
+        @if (_numInforme > 0)
+        {
+            <div class="r5-fila" style="margin-left:auto">
+                <span class="r5-chip" style="background: var(--c-primario-claro); color: var(--c-primario-osc);">
+                    Informe @_numInforme · @_lineasAnadidas líneas
+                </span>
+                <button class="r5-btn r5-btn--primario" @onclick="RegistrarAsync" disabled="@_registrando">
+                    @(_registrando ? "Registrando…" : "Registrar informe")
+                </button>
+            </div>
+        }
+    </div>
+
+    @if (_tipoElegido is null)
+    {
+        <div class="r5-tarjeta r5-columna">
+            <h3>Tipo de informe</h3>
+            @if (_tipos.Count == 0)
+            {
+                <Cargando Texto="Cargando tipos…" />
+            }
+            else
+            {
+                <div class="r5-docs">
+                    @foreach (var tipo in _tipos)
+                    {
+                        <button @key="tipo.Tipo" class="r5-doc" @onclick="() => ElegirTipo(tipo)">
+                            <Icono Nombre="informes" Clase="r5-modulo__icono" />
+                            <span class="r5-doc__principal">
+                                <span class="r5-doc__titulo">@tipo.DescTipo</span>
+                                <span class="r5-doc__detalle">Tipo @tipo.Tipo</span>
+                            </span>
+                        </button>
+                    }
+                </div>
+            }
+            <Aviso Mensaje="@(_tipoAviso == "error" ? _aviso : "")" />
+        </div>
+    }
+    else
+    {
+        <div class="r5-tarjeta r5-columna">
+            <div class="r5-fila" style="flex-wrap: wrap;">
+                <span class="r5-texto-suave">Tipo:</span>
+                <strong>@_tipoElegido.DescTipo</strong>
+                @if (_numInforme == 0)
+                {
+                    <button class="r5-btn r5-btn--fantasma" @onclick="CambiarTipo">Cambiar</button>
+                }
+                @if (_tipoElegido.AlmDest > 0)
+                {
+                    <div class="r5-campo" style="min-width: 180px;">
+                        <label for="almDestInf">Almacén destino@(_tipoElegido.AlmDest == 2 ? " *" : "")</label>
+                        <input id="almDestInf" class="r5-input r5-input--numero" type="number" inputmode="numeric"
+                               min="0" max="999" @bind="_codAlmDest" disabled="@(_numInforme > 0)" />
+                    </div>
+                }
+            </div>
+
+            <form @onsubmit="BuscarAsync" class="r5-buscador">
+                <input id="busquedaInforme" class="r5-input" type="text" inputmode="numeric"
+                       placeholder="Escanea un EAN o teclea el código de producto"
+                       @bind="_codigo" @bind:event="oninput" disabled="@_ocupado" />
+                <button type="submit" class="r5-btn r5-btn--primario" disabled="@(_ocupado || string.IsNullOrWhiteSpace(_codigo))">
+                    Buscar
+                </button>
+            </form>
+        </div>
+
+        <Aviso Tipo="@_tipoAviso" Mensaje="@_aviso" />
+
+        @if (_ocupado)
+        {
+            <Cargando />
+        }
+        else if (_linea is not null)
+        {
+            <div class="r5-tarjeta r5-columna">
+                <div class="r5-ficha__identidad">
+                    <span class="r5-ficha__codigo">@_linea.Prod.CodProd</span>
+                    <span class="r5-ficha__nombre">@_linea.Prod.DescProd</span>
+                </div>
+
+                <div class="r5-fila" style="flex-wrap: wrap; align-items: flex-end;">
+                    @if (_tipoElegido.Cajas > 0)
+                    {
+                        <div class="r5-campo" style="min-width: 130px; flex: 1;">
+                            <label>Cajas@(Oblig(_tipoElegido.Cajas))</label>
+                            <input class="r5-input r5-input--numero" type="number" inputmode="numeric" min="0" @bind="_cajas" />
+                        </div>
+                    }
+                    @if (_tipoElegido.Cant > 0)
+                    {
+                        <div class="r5-campo" style="min-width: 130px; flex: 1;">
+                            <label>Cantidad@(Oblig(_tipoElegido.Cant))</label>
+                            <input class="r5-input r5-input--numero" type="number" inputmode="decimal"
+                                   step="@(_linea.Prod.DecimalesEnCant ? "0.001" : "1")" min="0" @bind="_cant" />
+                        </div>
+                    }
+                    @if (_tipoElegido.PrecioA > 0)
+                    {
+                        <div class="r5-campo" style="min-width: 140px; flex: 1;">
+                            <label>@Etiqueta(_tipoElegido.PrecioA_Desc, "Precio A")@(Oblig(_tipoElegido.PrecioA))</label>
+                            <input class="r5-input r5-input--numero" type="number" inputmode="decimal" step="0.01" min="0" @bind="_precioA" />
+                        </div>
+                    }
+                    @if (_tipoElegido.PrecioB > 0)
+                    {
+                        <div class="r5-campo" style="min-width: 140px; flex: 1;">
+                            <label>@Etiqueta(_tipoElegido.PrecioB_Desc, "Precio B")@(Oblig(_tipoElegido.PrecioB))</label>
+                            <input class="r5-input r5-input--numero" type="number" inputmode="decimal" step="0.01" min="0" @bind="_precioB" />
+                        </div>
+                    }
+                    @if (_tipoElegido.PrecioC > 0)
+                    {
+                        <div class="r5-campo" style="min-width: 140px; flex: 1;">
+                            <label>@Etiqueta(_tipoElegido.PrecioC_Desc, "Precio C")@(Oblig(_tipoElegido.PrecioC))</label>
+                            <input class="r5-input r5-input--numero" type="number" inputmode="decimal" step="0.01" min="0" @bind="_precioC" />
+                        </div>
+                    }
+                    @if (_tipoElegido.ValorA > 0)
+                    {
+                        <div class="r5-campo" style="min-width: 160px; flex: 1;">
+                            <label>@Etiqueta(_tipoElegido.ValorA_Desc, "Valor A")@(Oblig(_tipoElegido.ValorA))</label>
+                            <input class="r5-input" type="text" @bind="_valorA" />
+                        </div>
+                    }
+                    @if (_tipoElegido.ValorB > 0)
+                    {
+                        <div class="r5-campo" style="min-width: 160px; flex: 1;">
+                            <label>@Etiqueta(_tipoElegido.ValorB_Desc, "Valor B")@(Oblig(_tipoElegido.ValorB))</label>
+                            <input class="r5-input" type="text" @bind="_valorB" />
+                        </div>
+                    }
+                    @if (_tipoElegido.ValorC > 0)
+                    {
+                        <div class="r5-campo" style="min-width: 160px; flex: 1;">
+                            <label>@Etiqueta(_tipoElegido.ValorC_Desc, "Valor C")@(Oblig(_tipoElegido.ValorC))</label>
+                            <input class="r5-input" type="text" @bind="_valorC" />
+                        </div>
+                    }
+                </div>
+
+                <button class="r5-btn r5-btn--primario r5-btn--bloque" @onclick="AnadirAsync" disabled="@_anadiendo">
+                    @(_anadiendo ? "Añadiendo…" : "Añadir al informe")
+                </button>
+            </div>
+        }
+    }
+</div>
+</GuardiaModulo>
+
+@code {
+    private List<TipoInforme> _tipos = new();
+    private TipoInforme? _tipoElegido;
+    private short _codAlmDest;
+
+    private string _codigo = "";
+    private bool _ocupado;
+    private bool _anadiendo;
+    private bool _registrando;
+    private string _aviso = "";
+    private string _tipoAviso = "error";
+
+    private InformeLin? _linea;
+    private long _eanEscaneado;
+    private short _cajas;
+    private decimal _cant;
+    private decimal _precioA;
+    private decimal _precioB;
+    private decimal _precioC;
+    private string _valorA = "";
+    private string _valorB = "";
+    private string _valorC = "";
+
+    private int _numInforme;
+    private int _lineasAnadidas;
+    private readonly DateTime _fecha = DateTime.Today;
+
+    private static string Oblig(byte visibilidad) => visibilidad == 2 ? " *" : "";
+    private static string Etiqueta(string? desc, string porDefecto)
+        => string.IsNullOrWhiteSpace(desc) ? porDefecto : desc;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var tipos = await Informes.GetTiposAsync();
+        if (!tipos.Ok) { MostrarError(tipos.Error); return; }
+        _tipos = tipos.Datos ?? new();
+    }
+
+    private void ElegirTipo(TipoInforme tipo)
+    {
+        _tipoElegido = tipo;
+        _aviso = "";
+    }
+
+    private void CambiarTipo()
+    {
+        _tipoElegido = null;
+        _linea = null;
+        _aviso = "";
+    }
+
+    private async Task BuscarAsync()
+    {
+        string codigo = _codigo.Trim();
+        if (_ocupado || codigo.Length == 0 || _tipoElegido is null || !Sesion.Autenticado) return;
+
+        _ocupado = true;
+        _aviso = "";
+        _linea = null;
+        _eanEscaneado = 0;
+        try
+        {
+            short codAlm = Sesion.Usuario!.Almacen.CodAlm;
+
+            ApiRespuesta<InformeLin> respuesta;
+            if (codigo.Length >= 8 && long.TryParse(codigo, out long ean))
+            {
+                respuesta = await Informes.GetProdPorEanAsync(_tipoElegido.Tipo, codAlm, ean);
+                _eanEscaneado = ean;
+            }
+            else if (int.TryParse(codigo, out int codProd) && codProd > 0)
+            {
+                respuesta = await Informes.GetProdPorCodAsync(_tipoElegido.Tipo, codAlm, codProd);
+            }
+            else
+            {
+                MostrarError("Introduce un código numérico (producto o EAN).");
+                return;
+            }
+
+            if (!respuesta.Ok || respuesta.Datos is null) { MostrarError(respuesta.Error); return; }
+            if (respuesta.Datos.Prod.CodProd <= 0) { MostrarError($"El código {codigo} no corresponde a ningún producto."); return; }
+
+            _linea = respuesta.Datos;
+            // Precarga de los tipos con RellenarCampos (precios/valores de la BD).
+            _cajas = _linea.Cajas ?? 0;
+            _cant = _linea.Cant ?? 0;
+            _precioA = _linea.PrecioA ?? 0;
+            _precioB = _linea.PrecioB ?? 0;
+            _precioC = _linea.PrecioC ?? 0;
+            _valorA = _linea.ValorA ?? "";
+            _valorB = _linea.ValorB ?? "";
+            _valorC = _linea.ValorC ?? "";
+        }
+        finally
+        {
+            _ocupado = false;
+            StateHasChanged();
+            await JS.InvokeVoidAsync("r5.seleccionar", "busquedaInforme");
+        }
+    }
+
+    private bool ValidarObligatorios(out string faltan)
+    {
+        var pendientes = new List<string>();
+        if (_tipoElegido!.Cajas == 2 && _cajas <= 0) pendientes.Add("Cajas");
+        if (_tipoElegido.Cant == 2 && _cant <= 0) pendientes.Add("Cantidad");
+        if (_tipoElegido.AlmDest == 2 && _codAlmDest <= 0) pendientes.Add("Almacén destino");
+        if (_tipoElegido.PrecioA == 2 && _precioA <= 0) pendientes.Add(Etiqueta(_tipoElegido.PrecioA_Desc, "Precio A"));
+        if (_tipoElegido.PrecioB == 2 && _precioB <= 0) pendientes.Add(Etiqueta(_tipoElegido.PrecioB_Desc, "Precio B"));
+        if (_tipoElegido.PrecioC == 2 && _precioC <= 0) pendientes.Add(Etiqueta(_tipoElegido.PrecioC_Desc, "Precio C"));
+        if (_tipoElegido.ValorA == 2 && string.IsNullOrWhiteSpace(_valorA)) pendientes.Add(Etiqueta(_tipoElegido.ValorA_Desc, "Valor A"));
+        if (_tipoElegido.ValorB == 2 && string.IsNullOrWhiteSpace(_valorB)) pendientes.Add(Etiqueta(_tipoElegido.ValorB_Desc, "Valor B"));
+        if (_tipoElegido.ValorC == 2 && string.IsNullOrWhiteSpace(_valorC)) pendientes.Add(Etiqueta(_tipoElegido.ValorC_Desc, "Valor C"));
+        faltan = string.Join(", ", pendientes);
+        return pendientes.Count == 0;
+    }
+
+    private async Task AnadirAsync()
+    {
+        if (_anadiendo || _linea is null || _tipoElegido is null) return;
+        if (!ValidarObligatorios(out string faltan))
+        {
+            MostrarError($"Faltan campos obligatorios: {faltan}.");
+            return;
+        }
+
+        _anadiendo = true;
+        _aviso = "";
+        try
+        {
+            var alta = new InformeLinInsertDTO
+            {
+                CodUsuario = Sesion.Usuario!.CodUsuario,
+                Tipo = _tipoElegido.Tipo,
+                NumInforme = _numInforme,
+                Fecha = _fecha,
+                CodAlmOrigen = Sesion.Usuario.Almacen.CodAlm,
+                CodAlmDest = _codAlmDest,
+                CodProd = _linea.Prod.CodProd,
+                Cajas = _cajas,
+                Cant = _cant,
+                PrecioA = _precioA,
+                PrecioB = _precioB,
+                PrecioC = _precioC,
+                ValorA = _valorA,
+                ValorB = _valorB,
+                ValorC = _valorC,
+                CodEan = _eanEscaneado
+            };
+            var respuesta = await Informes.PostLineaAsync(alta);
+            if (!respuesta.Ok || respuesta.Datos is null) { MostrarError(respuesta.Error); return; }
+
+            _numInforme = respuesta.Datos.NumDoc;
+            _lineasAnadidas++;
+            _tipoAviso = "exito";
+            _aviso = $"{_linea.Prod.DescProd} añadido al informe {_numInforme}.";
+            _linea = null;
+            _codigo = "";
+        }
+        finally
+        {
+            _anadiendo = false;
+            StateHasChanged();
+            await JS.InvokeVoidAsync("r5.seleccionar", "busquedaInforme");
+        }
+    }
+
+    private async Task RegistrarAsync()
+    {
+        if (_registrando || _numInforme <= 0) return;
+
+        _registrando = true;
+        _aviso = "";
+        try
+        {
+            var respuesta = await Informes.RegistrarAsync(_numInforme);
+            if (!respuesta.Ok) { MostrarError(respuesta.Error); return; }
+
+            Nav.NavigateTo($"/informes/{_numInforme}");
+        }
+        finally
+        {
+            _registrando = false;
+        }
+    }
+
+    private void MostrarError(string mensaje)
+    {
+        _tipoAviso = "error";
+        _aviso = mensaje;
+    }
+
+    private void Volver() => Nav.NavigateTo("/informes");
+}

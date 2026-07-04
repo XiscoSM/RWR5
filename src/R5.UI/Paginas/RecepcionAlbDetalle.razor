@@ -11,7 +11,37 @@
     <div class="r5-fila">
         <button class="r5-btn r5-btn--secundario" @onclick="Volver">← Albaranes</button>
         <h2>Albarán @NumAlbaran · @(_fecha?.ToString("dd/MM/yyyy"))</h2>
+        @if (!_registrado)
+        {
+            <button class="r5-btn r5-btn--primario" style="margin-left:auto"
+                    @onclick="() => _pidiendoLink = !_pidiendoLink" disabled="@(_fecha is null)">
+                Registrar recepción
+            </button>
+        }
     </div>
+
+    @if (_registrado)
+    {
+        <Aviso Tipo="exito" Mensaje="@_avisoRegistro" />
+    }
+
+    @if (_pidiendoLink)
+    {
+        <form class="r5-tarjeta r5-columna r5-ancho-form" @onsubmit="RegistrarAsync">
+            <h3>Link del documento</h3>
+            <p class="r5-texto-suave r5-texto-sm">Escanea la etiqueta de link pegada al albarán en papel.</p>
+            <input id="linkDoc" class="r5-input r5-input--numero" type="text" inputmode="numeric" maxlength="13"
+                   @bind="_linkTexto" @bind:event="oninput" autofocus disabled="@_registrando" />
+            <Aviso Tipo="@_tipoAvisoRegistro" Mensaje="@_avisoRegistro" />
+            <div class="r5-fila">
+                <button type="submit" class="r5-btn r5-btn--primario"
+                        disabled="@(_registrando || !long.TryParse(_linkTexto, out _))">
+                    @(_registrando ? "Registrando…" : "Confirmar registro")
+                </button>
+                <button type="button" class="r5-btn r5-btn--fantasma" @onclick="() => _pidiendoLink = false">Cancelar</button>
+            </div>
+        </form>
+    }
 
     @if (_fecha is null)
     {
@@ -79,6 +109,40 @@
     private bool _cargando = true;
     private string _error = "";
     private List<AlbaranLin> _lineas = new();
+
+    private bool _pidiendoLink;
+    private bool _registrando;
+    private bool _registrado;
+    private string _linkTexto = "";
+    private string _avisoRegistro = "";
+    private string _tipoAvisoRegistro = "error";
+
+    // Registrar la recepción pendiente: exige el link del documento en papel.
+    private async Task RegistrarAsync()
+    {
+        if (_registrando || _fecha is null || !long.TryParse(_linkTexto, out long link) || link <= 0) return;
+
+        _registrando = true;
+        _avisoRegistro = "";
+        try
+        {
+            var respuesta = await Albaranes.RegistrarAsync(NumAlbaran, _fecha.Value, Sesion.Usuario!.CodUsuario, link);
+            if (!respuesta.Ok)
+            {
+                _tipoAvisoRegistro = "error";
+                _avisoRegistro = respuesta.Error;
+                return;
+            }
+            _registrado = true;
+            _pidiendoLink = false;
+            _tipoAvisoRegistro = "exito";
+            _avisoRegistro = $"Albarán {NumAlbaran} registrado.";
+        }
+        finally
+        {
+            _registrando = false;
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
