@@ -1,0 +1,279 @@
+@* Alta de traspaso: primero el almacén de destino (se valida y queda fijado),
+   después escaneo encadenado de productos con cajas/cantidad; el importe sale
+   del coste (cant × último precio de coste), como en R3. Las líneas se van
+   sumando al mismo traspaso y al terminar se registra. *@
+@page "/traspasos/alta"
+@inject TraspasoService Traspasos
+@inject AlmacenService Almacenes
+@inject SesionUsuario Sesion
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<GuardiaModulo CodMenu="11">
+<div class="r5-columna">
+
+    <div class="r5-fila">
+        <button class="r5-btn r5-btn--secundario" @onclick="Volver">← Traspasos</button>
+        <h2>Nuevo traspaso</h2>
+        @if (_numTraspaso > 0)
+        {
+            <div class="r5-fila" style="margin-left:auto">
+                <span class="r5-chip" style="background: var(--c-primario-claro); color: var(--c-primario-osc);">
+                    Traspaso @_numTraspaso · @_lineasAnadidas líneas
+                </span>
+                <button class="r5-btn r5-btn--primario" @onclick="RegistrarAsync" disabled="@_registrando">
+                    @(_registrando ? "Registrando…" : "Registrar traspaso")
+                </button>
+            </div>
+        }
+    </div>
+
+    @if (_almDest is null)
+    {
+        <form class="r5-tarjeta r5-columna r5-ancho-form" @onsubmit="ValidarDestinoAsync">
+            <h3>Almacén de destino</h3>
+            <div class="r5-campo">
+                <label for="almDestino">Número de almacén</label>
+                <input id="almDestino" class="r5-input r5-input--numero" type="number" inputmode="numeric"
+                       min="1" max="999" @bind="_codAlmDest" @bind:event="oninput" autofocus disabled="@_ocupado" />
+            </div>
+            <Aviso Mensaje="@(_tipoAviso == "error" ? _aviso : "")" />
+            <button type="submit" class="r5-btn r5-btn--primario r5-btn--bloque"
+                    disabled="@(_ocupado || _codAlmDest is null or <= 0)">
+                @(_ocupado ? "Comprobando…" : "Continuar")
+            </button>
+        </form>
+    }
+    else
+    {
+        <div class="r5-tarjeta r5-columna">
+            <div class="r5-fila">
+                <span class="r5-texto-suave">Destino:</span>
+                <strong>@_almDest.CodAlm · @_almDest.DescAlm</strong>
+                @if (_numTraspaso == 0)
+                {
+                    <button class="r5-btn r5-btn--fantasma" @onclick="CambiarDestino">Cambiar</button>
+                }
+            </div>
+
+            <form @onsubmit="BuscarAsync" class="r5-buscador">
+                <input id="busquedaTraspaso" class="r5-input" type="text" inputmode="numeric"
+                       placeholder="Escanea un EAN o teclea el código de producto"
+                       @bind="_codigo" @bind:event="oninput" disabled="@_ocupado" />
+                <button type="submit" class="r5-btn r5-btn--primario" disabled="@(_ocupado || string.IsNullOrWhiteSpace(_codigo))">
+                    Buscar
+                </button>
+            </form>
+        </div>
+
+        <Aviso Tipo="@_tipoAviso" Mensaje="@_aviso" />
+
+        @if (_ocupado)
+        {
+            <Cargando />
+        }
+        else if (_linea is not null)
+        {
+            <div class="r5-tarjeta r5-columna">
+                <div class="r5-ficha__identidad">
+                    <span class="r5-ficha__codigo">@_linea.Prod.CodProd</span>
+                    <span class="r5-ficha__nombre">@_linea.Prod.DescProd</span>
+                </div>
+
+                <dl class="r5-datos">
+                    <div><dt>Unidades por caja</dt><dd>@UnidCaja</dd></div>
+                    <div><dt>Coste unitario</dt><dd>@Moneda(_linea.Prod.UltPrecioCoste)</dd></div>
+                    <div><dt>Importe de la línea</dt><dd>@Moneda(Importe)</dd></div>
+                </dl>
+
+                <div class="r5-campo">
+                    <label for="cantTraspaso">Cantidad a traspasar</label>
+                    <div class="r5-fila">
+                        <button class="r5-btn r5-btn--secundario" @onclick="() => SumarCajas(-1)"
+                                disabled="@(_cantidad < UnidCaja)">− caja</button>
+                        <input id="cantTraspaso" class="r5-input r5-input--numero" type="number" inputmode="decimal"
+                               step="@(_linea.Prod.DecimalesEnCant ? "0.001" : "1")" min="0"
+                               @bind="_cantidad" @bind:event="oninput" />
+                        <button class="r5-btn r5-btn--secundario" @onclick="() => SumarCajas(1)">+ caja (@UnidCaja)</button>
+                    </div>
+                </div>
+
+                <button class="r5-btn r5-btn--primario r5-btn--bloque" @onclick="AnadirAsync"
+                        disabled="@(_anadiendo || _cantidad <= 0)">
+                    @(_anadiendo ? "Añadiendo…" : $"Añadir {Cantidad(_cantidad, _linea.Prod.DecimalesEnCant)} al traspaso")
+                </button>
+            </div>
+        }
+    }
+</div>
+</GuardiaModulo>
+
+@code {
+    private short? _codAlmDest;
+    private Almacen? _almDest;
+    private string _codigo = "";
+    private bool _ocupado;
+    private bool _anadiendo;
+    private bool _registrando;
+    private string _aviso = "";
+    private string _tipoAviso = "error";
+
+    private TraspasoLin? _linea;
+    private long _eanEscaneado;
+    private decimal _cantidad;
+    private int _numTraspaso;
+    private int _lineasAnadidas;
+    private readonly DateTime _fecha = DateTime.Today;
+
+    private short UnidCaja => _linea is null ? (short)1
+        : (_linea.Ean.EsCaja ? _linea.Ean.UnidCaja : _linea.Prod.UnidsCaja);
+
+    private decimal Importe => _linea is null ? 0 : Math.Round(_cantidad * _linea.Prod.UltPrecioCoste, 2);
+
+    private async Task ValidarDestinoAsync()
+    {
+        if (_ocupado || _codAlmDest is null or <= 0) return;
+        if (_codAlmDest == Sesion.Usuario!.Almacen.CodAlm)
+        {
+            MostrarError("El destino no puede ser el propio almacén.");
+            return;
+        }
+
+        _ocupado = true;
+        _aviso = "";
+        try
+        {
+            var respuesta = await Almacenes.GetAsync(_codAlmDest.Value);
+            if (!respuesta.Ok || respuesta.Datos is null) { MostrarError(respuesta.Error); return; }
+            if (respuesta.Datos.CodAlm <= 0) { MostrarError($"El almacén {_codAlmDest} no existe."); return; }
+
+            _almDest = respuesta.Datos;
+        }
+        finally
+        {
+            _ocupado = false;
+            StateHasChanged();
+            await JS.InvokeVoidAsync("r5.seleccionar", "busquedaTraspaso");
+        }
+    }
+
+    private void CambiarDestino()
+    {
+        _almDest = null;
+        _linea = null;
+        _aviso = "";
+    }
+
+    private void SumarCajas(int cajas)
+    {
+        decimal nueva = _cantidad + cajas * UnidCaja;
+        _cantidad = nueva < 0 ? 0 : nueva;
+    }
+
+    private async Task BuscarAsync()
+    {
+        string codigo = _codigo.Trim();
+        if (_ocupado || codigo.Length == 0 || _almDest is null || !Sesion.Autenticado) return;
+
+        _ocupado = true;
+        _aviso = "";
+        _linea = null;
+        _eanEscaneado = 0;
+        try
+        {
+            short origen = Sesion.Usuario!.Almacen.CodAlm;
+
+            int codProd = 0;
+            long codEan = 0;
+            if (codigo.Length >= 8 && long.TryParse(codigo, out long ean)) codEan = ean;
+            else if (int.TryParse(codigo, out int cod) && cod > 0) codProd = cod;
+            else { MostrarError("Introduce un código numérico (producto o EAN)."); return; }
+
+            var respuesta = await Traspasos.GetLineaProductoAsync(_numTraspaso, _fecha, origen, _almDest.CodAlm, codProd, codEan);
+            if (!respuesta.Ok || respuesta.Datos is null) { MostrarError(respuesta.Error); return; }
+            if (respuesta.Datos.Prod.CodProd <= 0) { MostrarError($"El código {codigo} no corresponde a ningún producto."); return; }
+
+            _linea = respuesta.Datos;
+            _eanEscaneado = codEan;
+            _cantidad = UnidCaja;
+        }
+        finally
+        {
+            _ocupado = false;
+            StateHasChanged();
+            await JS.InvokeVoidAsync("r5.seleccionar", "busquedaTraspaso");
+        }
+    }
+
+    private async Task AnadirAsync()
+    {
+        if (_anadiendo || _linea is null || _almDest is null || _cantidad <= 0) return;
+
+        _anadiendo = true;
+        _aviso = "";
+        try
+        {
+            var alta = new TraspLinInsertDTO
+            {
+                Fecha = _fecha,
+                NumTraspaso = _numTraspaso,
+                CodAlmOrigen = Sesion.Usuario!.Almacen.CodAlm,
+                CodAlmDest = _almDest.CodAlm,
+                CodProd = _linea.Prod.CodProd,
+                CodEan = _eanEscaneado,
+                Cajas = (short)(UnidCaja > 0 ? Math.Ceiling(_cantidad / UnidCaja) : 0),
+                UnidCaja = UnidCaja,
+                Cant = _cantidad,
+                Importe = Importe,
+                CodUsuario = Sesion.Usuario.CodUsuario,
+                Lote = _linea.Prod.Lote ?? 0,
+                Registrado = false,
+                FechaPedido = new DateTime(1900, 1, 1),
+                NumPedido = 0
+            };
+            var respuesta = await Traspasos.PostLineaAsync(alta);
+            if (!respuesta.Ok || respuesta.Datos is null) { MostrarError(respuesta.Error); return; }
+
+            _numTraspaso = respuesta.Datos.NumTraspaso;
+            _lineasAnadidas++;
+            _tipoAviso = "exito";
+            _aviso = $"{_linea.Prod.DescProd}: {Cantidad(_cantidad, _linea.Prod.DecimalesEnCant)} añadido al traspaso {_numTraspaso}.";
+            _linea = null;
+            _codigo = "";
+        }
+        finally
+        {
+            _anadiendo = false;
+            StateHasChanged();
+            await JS.InvokeVoidAsync("r5.seleccionar", "busquedaTraspaso");
+        }
+    }
+
+    // Registrar el traspaso: irreversible desde la app (genera el movimiento en RW).
+    private async Task RegistrarAsync()
+    {
+        if (_registrando || _numTraspaso <= 0) return;
+
+        _registrando = true;
+        _aviso = "";
+        try
+        {
+            var respuesta = await Traspasos.RegistrarAsync(_numTraspaso, _fecha, Sesion.Usuario!.CodUsuario);
+            if (!respuesta.Ok) { MostrarError(respuesta.Error); return; }
+
+            Nav.NavigateTo($"/traspasos/{_fecha:yyyy-MM-dd}/{_numTraspaso}");
+        }
+        finally
+        {
+            _registrando = false;
+        }
+    }
+
+    private void MostrarError(string mensaje)
+    {
+        _tipoAviso = "error";
+        _aviso = mensaje;
+    }
+
+    private void Volver() => Nav.NavigateTo("/traspasos");
+}

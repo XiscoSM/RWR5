@@ -1,0 +1,179 @@
+@* Conteo de inventario: escanear → ver total ya contado → teclear cantidad → Contar.
+   Cada conteo SE SUMA a lo anterior (así funciona el proc), y se dice claramente.
+   El foco vuelve al buscador tras cada conteo para encadenar escaneos. *@
+@page "/inventarios/{FechaRuta}/conteo"
+@inject InventarioService Inventarios
+@inject SesionUsuario Sesion
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<GuardiaModulo CodMenu="3">
+<div class="r5-columna">
+
+    <div class="r5-fila">
+        <button class="r5-btn r5-btn--secundario" @onclick="Volver">← Inventario</button>
+        <h2>Contar · @(_fecha?.ToString("dd/MM/yyyy"))</h2>
+        <span class="r5-chip" style="margin-left:auto; background: var(--c-primario-claro); color: var(--c-primario-osc);">
+            Terminal @Sesion.Usuario?.NumTerminal
+        </span>
+    </div>
+
+    @if (_fecha is null)
+    {
+        <Aviso Mensaje="La fecha del inventario no es válida." />
+    }
+    else
+    {
+        <div class="r5-tarjeta">
+            <form @onsubmit="BuscarAsync" class="r5-buscador">
+                <input id="busquedaConteo" class="r5-input" type="text" inputmode="numeric"
+                       placeholder="Escanea un EAN o teclea el código de producto"
+                       @bind="_codigo" @bind:event="oninput" autofocus disabled="@_ocupado" />
+                <button type="submit" class="r5-btn r5-btn--primario" disabled="@(_ocupado || string.IsNullOrWhiteSpace(_codigo))">
+                    Buscar
+                </button>
+            </form>
+        </div>
+
+        <Aviso Tipo="@_tipoAviso" Mensaje="@_aviso" />
+
+        @if (_ocupado)
+        {
+            <Cargando />
+        }
+        else if (_linea is not null)
+        {
+            <div class="r5-tarjeta r5-columna">
+                <div class="r5-ficha__identidad">
+                    <span class="r5-ficha__codigo">@_linea.Prod.CodProd</span>
+                    <span class="r5-ficha__nombre">@_linea.Prod.DescProd</span>
+                </div>
+
+                <dl class="r5-datos">
+                    <div><dt>Total ya contado</dt><dd>@Cantidad(_linea.CantTotal, _linea.Prod.DecimalesEnCant)</dd></div>
+                    <div><dt>Unidades por caja</dt><dd>@_linea.Prod.UnidsCaja</dd></div>
+                </dl>
+
+                <div class="r5-campo">
+                    <label for="cantConteo">Cantidad de este conteo (se suma al total)</label>
+                    <input id="cantConteo" class="r5-input r5-input--numero" type="number" inputmode="decimal"
+                           step="@(_linea.Prod.DecimalesEnCant ? "0.001" : "1")" min="0"
+                           @bind="_cantidad" @bind:event="oninput" />
+                </div>
+
+                <button class="r5-btn r5-btn--primario r5-btn--bloque" @onclick="ContarAsync"
+                        disabled="@(_contando || _cantidad <= 0)">
+                    @(_contando ? "Registrando…" : $"Contar {Cantidad(_cantidad, _linea.Prod.DecimalesEnCant)}")
+                </button>
+            </div>
+        }
+    }
+</div>
+</GuardiaModulo>
+
+@code {
+    [Parameter] public string FechaRuta { get; set; } = "";
+
+    private DateTime? _fecha;
+    private string _codigo = "";
+    private bool _ocupado;
+    private bool _contando;
+    private string _aviso = "";
+    private string _tipoAviso = "error";
+
+    private InventarioLin? _linea;
+    private long _eanEscaneado;
+    private decimal _cantidad;
+
+    protected override void OnInitialized()
+    {
+        _fecha = DateTime.TryParseExact(FechaRuta, "yyyy-MM-dd", null,
+            System.Globalization.DateTimeStyles.None, out var fecha) ? fecha : null;
+    }
+
+    private async Task BuscarAsync()
+    {
+        string codigo = _codigo.Trim();
+        if (_ocupado || codigo.Length == 0 || _fecha is null || !Sesion.Autenticado) return;
+
+        _ocupado = true;
+        _aviso = "";
+        _linea = null;
+        _eanEscaneado = 0;
+        try
+        {
+            short codAlm = Sesion.Usuario!.Almacen.CodAlm;
+
+            ApiRespuesta<InventarioLin> respuesta;
+            if (codigo.Length >= 8 && long.TryParse(codigo, out long ean))
+            {
+                respuesta = await Inventarios.GetProdPorEanAsync(codAlm, _fecha.Value, ean);
+                _eanEscaneado = ean;
+            }
+            else if (int.TryParse(codigo, out int codProd) && codProd > 0)
+            {
+                respuesta = await Inventarios.GetProdPorCodAsync(codAlm, _fecha.Value, codProd);
+            }
+            else
+            {
+                MostrarError("Introduce un código numérico (producto o EAN).");
+                return;
+            }
+
+            if (!respuesta.Ok || respuesta.Datos is null) { MostrarError(respuesta.Error); return; }
+            if (respuesta.Datos.Prod.CodProd <= 0) { MostrarError($"El código {codigo} no corresponde a ningún producto."); return; }
+
+            _linea = respuesta.Datos;
+            // Con EAN de caja el conteo natural es una caja; sin él, una unidad.
+            _cantidad = _linea.Ean.EsCaja ? _linea.Ean.UnidCaja : 1;
+        }
+        finally
+        {
+            _ocupado = false;
+            StateHasChanged();
+            await JS.InvokeVoidAsync("r5.seleccionar", "busquedaConteo");
+        }
+    }
+
+    private async Task ContarAsync()
+    {
+        if (_contando || _linea is null || _fecha is null || _cantidad <= 0) return;
+
+        _contando = true;
+        _aviso = "";
+        try
+        {
+            var conteo = new InvLinInsertDTO
+            {
+                Fecha = _fecha.Value,
+                CodAlm = Sesion.Usuario!.Almacen.CodAlm,
+                CodProd = _linea.Prod.CodProd,
+                CodEan = _eanEscaneado,
+                Cant = _cantidad,
+                CodUsuario = Sesion.Usuario.CodUsuario,
+                NumTerminal = Sesion.Usuario.NumTerminal
+            };
+            var respuesta = await Inventarios.PostConteoAsync(conteo);
+            if (!respuesta.Ok) { MostrarError(respuesta.Error); return; }
+
+            _tipoAviso = "exito";
+            _aviso = $"{_linea.Prod.DescProd}: +{Cantidad(_cantidad, _linea.Prod.DecimalesEnCant)} contado (total {Cantidad(_linea.CantTotal + _cantidad, _linea.Prod.DecimalesEnCant)}).";
+            _linea = null;
+            _codigo = "";
+        }
+        finally
+        {
+            _contando = false;
+            StateHasChanged();
+            await JS.InvokeVoidAsync("r5.seleccionar", "busquedaConteo");
+        }
+    }
+
+    private void MostrarError(string mensaje)
+    {
+        _tipoAviso = "error";
+        _aviso = mensaje;
+    }
+
+    private void Volver() => Nav.NavigateTo($"/inventarios/{FechaRuta}");
+}

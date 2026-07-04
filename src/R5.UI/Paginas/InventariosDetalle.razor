@@ -11,6 +11,11 @@
     <div class="r5-fila">
         <button class="r5-btn r5-btn--secundario" @onclick="Volver">← Inventarios</button>
         <h2>Inventario @(_fecha?.ToString("dd/MM/yyyy"))</h2>
+        <button class="r5-btn r5-btn--primario" style="margin-left:auto"
+                @onclick="@(() => Nav.NavigateTo($"/inventarios/{FechaRuta}/conteo"))"
+                disabled="@(_fecha is null)">
+            Contar productos
+        </button>
     </div>
 
     @if (_fecha is null)

@@ -23,4 +23,17 @@ public sealed class TraspasoService
     /// </summary>
     public Task<ApiRespuesta<List<TraspasoLin>>> GetLineasAsync(int numTraspaso, DateTime fecha, short top = 200, CancellationToken ct = default)
         => _api.GetAsync<List<TraspasoLin>>($"Traspasos/{numTraspaso}/{fecha:yyyy-MM-dd}/Lineas?fechaPedido=1900-01-01&numPedido=0&top={top}", ct);
+
+    /// <summary>GET Traspasos/{num}/{fecha}/Linea — producto para traspasar (num 0 = traspaso nuevo).</summary>
+    public Task<ApiRespuesta<TraspasoLin>> GetLineaProductoAsync(int numTraspaso, DateTime fecha, short codAlmOrigen, short codAlmDest, int codProd, long codEan, CancellationToken ct = default)
+        => _api.GetAsync<TraspasoLin>(
+            $"Traspasos/{numTraspaso}/{fecha:yyyy-MM-dd}/Linea?codAlmOrigen={codAlmOrigen}&codAlmDest={codAlmDest}&codProd={codProd}&codEan={codEan}&lote=0&fechaPedido=1900-01-01&numPedido=0", ct);
+
+    /// <summary>POST Traspasos/{num}/{fecha}/{prod} — añade línea (num 0 crea el traspaso). Importe obligatorio (cant × coste).</summary>
+    public Task<ApiRespuesta<TraspLinSelectDTO>> PostLineaAsync(TraspLinInsertDTO linea, CancellationToken ct = default)
+        => _api.PostAsync<TraspLinSelectDTO>($"Traspasos/{linea.NumTraspaso}/{linea.Fecha:yyyy-MM-dd}/{linea.CodProd}", linea, ct);
+
+    /// <summary>POST Traspasos/{num}/{fecha}/Registrar/{codUsuario} — registra el traspaso.</summary>
+    public Task<ApiRespuesta> RegistrarAsync(int numTraspaso, DateTime fecha, short codUsuario, CancellationToken ct = default)
+        => _api.PostAsync($"Traspasos/{numTraspaso}/{fecha:yyyy-MM-dd}/Registrar/{codUsuario}", cuerpo: null, ct);
 }
