@@ -63,11 +63,14 @@
                     <button class="r5-btn r5-btn--fantasma" @onclick="CambiarTipo">Cambiar</button>
                 }
 
-                @if (_tipoElegido.PermiteCambioProgDestino && _programas.Count > 0)
+                @if (_programas.Count > 0)
                 {
+                    @* El proc exige siempre un programa válido (FK); si el tipo no permite
+                       cambiarlo queda fijado al primero. *@
                     <div class="r5-campo" style="min-width: 260px;">
                         <label for="progDest">Programa destino</label>
-                        <select id="progDest" class="r5-select" @bind="_progDest" disabled="@(_numAjuste > 0)">
+                        <select id="progDest" class="r5-select" @bind="_progDest"
+                                disabled="@(_numAjuste > 0 || !_tipoElegido.PermiteCambioProgDestino)">
                             @foreach (var programa in _programas)
                             {
                                 <option value="@programa.Prog">@programa.DescProg</option>
@@ -235,7 +238,8 @@
                 Tipo = _tipoElegido.Tipo,
                 CodAlmOrigen = Sesion.Usuario!.Almacen.CodAlm,
                 CodAlmDest = _codAlmDest,
-                ProgDest = _tipoElegido.PermiteCambioProgDestino ? _progDest : (short)-1,
+                ProgDest = _progDest, // siempre un programa válido: el proc lo exige por FK
+
                 CodUsuario = Sesion.Usuario.CodUsuario,
                 CodProd = _linea.Prod.CodProd,
                 Cant = _cantidad,
