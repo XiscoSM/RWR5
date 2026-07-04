@@ -1,0 +1,283 @@
+@* Envasado / pesar-etiquetar: se escanea el EAN128 de trazabilidad (producto padre
+   + lote), se elige el envasable (con aviso de caducidad como en R3), se pesa —
+   con la báscula si está configurada, o tecleando — y cada pesada genera la
+   etiqueta (PDF con EAN128 de peso/pvp y código de barras, del mismo rdlc de R3). *@
+@page "/envasado"
+@inject EnvasadoService ServicioEnvasado
+@inject AlmacenService Almacenes
+@inject R5.Core.Hardware.IBalanza Balanza
+@inject IVisorArchivos Visor
+@inject SesionUsuario Sesion
+@inject IJSRuntime JS
+
+<GuardiaModulo CodMenu="27">
+<div class="r5-columna">
+
+    <div class="r5-tarjeta r5-columna">
+        <div class="r5-fila" style="flex-wrap: wrap;">
+            <div class="r5-campo" style="min-width: 170px;">
+                <label for="almDestEnv">Almacén destino</label>
+                <input id="almDestEnv" class="r5-input r5-input--numero" type="number" inputmode="numeric"
+                       min="1" max="999" @bind="_codAlmDest" @bind:after="ValidarDestinoAsync" />
+            </div>
+            <span class="r5-texto-suave" style="align-self: flex-end; padding-bottom: 14px;">@_descAlmDest</span>
+            @if (Balanza.Disponible)
+            {
+                <span class="r5-chip" style="margin-left:auto; align-self: flex-end; background: var(--c-exito-fondo); color: var(--c-exito);">
+                    <Icono Nombre="balanza" Clase="r5-barra__icono" /> Báscula configurada
+                </span>
+            }
+        </div>
+
+        <form @onsubmit="EscanearLoteAsync" class="r5-buscador">
+            <input id="busquedaEnvasado" class="r5-input" type="text" inputmode="numeric" maxlength="17"
+                   placeholder="Escanea el EAN-Lote de trazabilidad (16 dígitos)"
+                   @bind="_codigo" @bind:event="oninput" autofocus disabled="@_ocupado" />
+            <button type="submit" class="r5-btn r5-btn--primario" disabled="@(_ocupado || string.IsNullOrWhiteSpace(_codigo))">
+                Buscar
+            </button>
+        </form>
+    </div>
+
+    <Aviso Tipo="@_tipoAviso" Mensaje="@_aviso" />
+
+    @if (_ocupado)
+    {
+        <Cargando />
+    }
+    else if (_lote is not null && _seleccionado is null)
+    {
+        <div class="r5-tarjeta r5-columna">
+            <div class="r5-ficha__identidad">
+                <span class="r5-ficha__codigo">@_lote.Prod · Lote @_lote.Lote · @_lote.DescTipoLote</span>
+                <span class="r5-ficha__nombre">@_lote.DescProd</span>
+            </div>
+
+            <h3>Elige el producto a envasar</h3>
+            @if (_envasables.Count == 0)
+            {
+                <p class="r5-texto-suave">Este lote no tiene productos envasables para el almacén @_codAlmDest.</p>
+            }
+            else
+            {
+                <div class="r5-docs">
+                    @foreach (var producto in _envasables)
+                    {
+                        <button @key="producto.Prod" class="r5-doc" @onclick="() => Seleccionar(producto)">
+                            <Icono Nombre="balanza" Clase="r5-modulo__icono" />
+                            <span class="r5-doc__principal">
+                                <span class="r5-doc__titulo">@producto.DescProd</span>
+                                <span class="r5-doc__detalle">@producto.Prod · PVP @Moneda(producto.Pvp)/kg</span>
+                            </span>
+                            <span class="r5-doc__derecha">
+                                @if (producto.Caducado || producto.LoteCaducado)
+                                {
+                                    <span class="r5-badge r5-badge--aviso">
+                                        Caducado @(Fecha(producto.LoteCaducado ? producto.FechaCadLote : producto.FechaCad))
+                                    </span>
+                                }
+                            </span>
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+    }
+    else if (_seleccionado is not null)
+    {
+        <div class="r5-tarjeta r5-columna">
+            <div class="r5-fila">
+                <div class="r5-ficha__identidad">
+                    <span class="r5-ficha__codigo">@_seleccionado.Prod · Lote @_lote!.Lote</span>
+                    <span class="r5-ficha__nombre">@_seleccionado.DescProd</span>
+                </div>
+                <div class="r5-ficha__precio">
+                    <span class="r5-ficha__pvp">@Moneda(_seleccionado.Pvp)<span style="font-size: 1rem;">/kg</span></span>
+                </div>
+                <button class="r5-btn r5-btn--fantasma" @onclick="VolverALista">Cambiar</button>
+            </div>
+
+            <div class="r5-fila">
+                <div class="r5-campo" style="flex: 1;">
+                    <label for="pesoEnvasado">Peso (kg)</label>
+                    <input id="pesoEnvasado" class="r5-input r5-input--numero" type="number" inputmode="decimal"
+                           step="0.001" min="0" @bind="_peso" @bind:event="oninput" disabled="@_pesando" />
+                </div>
+                @if (Balanza.Disponible)
+                {
+                    <button class="r5-btn r5-btn--secundario" style="align-self: flex-end; min-height: var(--alto-input);"
+                            @onclick="PesarAsync" disabled="@_pesando">
+                        <Icono Nombre="balanza" Clase="r5-barra__icono" />
+                        @(_pesando ? "Pesando…" : "Leer báscula")
+                    </button>
+                }
+            </div>
+
+            <dl class="r5-datos">
+                <div><dt>Importe</dt><dd>@Moneda(Math.Round(_peso * _seleccionado.Pvp, 2))</dd></div>
+                @if (_etiquetasSesion > 0)
+                {
+                    <div><dt>Etiquetas de esta sesión</dt><dd>@_etiquetasSesion · @Cantidad(_pesoAcumulado, true) kg</dd></div>
+                }
+            </dl>
+
+            <button class="r5-btn r5-btn--primario r5-btn--bloque" @onclick="EtiquetarAsync"
+                    disabled="@(_ocupado || _peso <= 0)">
+                @(_ocupado ? "Generando etiqueta…" : $"Etiquetar {Cantidad(_peso, true)} kg")
+            </button>
+        </div>
+    }
+</div>
+</GuardiaModulo>
+
+@code {
+    private short _codAlmDest;
+    private string _descAlmDest = "";
+    private string _codigo = "";
+    private bool _ocupado;
+    private bool _pesando;
+    private string _aviso = "";
+    private string _tipoAviso = "error";
+
+    private EnvasadoLote? _lote;
+    private List<EnvasadoProducto> _envasables = new();
+    private EnvasadoProducto? _seleccionado;
+    private decimal _peso;
+    private int _etiquetasSesion;
+    private decimal _pesoAcumulado;
+
+    protected override void OnInitialized()
+    {
+        _codAlmDest = Sesion.Usuario?.Almacen.CodAlm ?? 0;
+        _descAlmDest = Sesion.Usuario?.Almacen.DescAlm ?? "";
+    }
+
+    private async Task ValidarDestinoAsync()
+    {
+        if (_codAlmDest <= 0) return;
+        var respuesta = await Almacenes.GetAsync(_codAlmDest);
+        _descAlmDest = respuesta.Datos?.CodAlm > 0 ? respuesta.Datos.DescAlm : "(no existe)";
+    }
+
+    private async Task EscanearLoteAsync()
+    {
+        if (_ocupado || string.IsNullOrWhiteSpace(_codigo) || !Sesion.Autenticado) return;
+
+        if (!EnvasadoService.TryParseEan128(_codigo, out int prod, out int lote))
+        {
+            MostrarError("EAN128 de trazabilidad no válido: 8 dígitos de producto + 8 de lote.");
+            return;
+        }
+
+        _ocupado = true;
+        _aviso = "";
+        _lote = null;
+        _seleccionado = null;
+        try
+        {
+            var respuesta = await ServicioEnvasado.GetLoteAsync(prod, lote);
+            if (!respuesta.Ok || respuesta.Datos is null) { MostrarError(respuesta.Error); return; }
+
+            _lote = respuesta.Datos;
+            _lote.Lote = lote;
+
+            var envasables = await ServicioEnvasado.GetProductosAsync(prod, lote, _codAlmDest);
+            if (!envasables.Ok) { MostrarError(envasables.Error); return; }
+            _envasables = envasables.Datos ?? new();
+
+            // Un único envasable no caducado: entrar directo a pesar (como el auto-select de R3).
+            if (_envasables.Count == 1 && !_envasables[0].Caducado && !_envasables[0].LoteCaducado)
+            {
+                Seleccionar(_envasables[0]);
+            }
+        }
+        finally
+        {
+            _ocupado = false;
+            StateHasChanged();
+            await JS.InvokeVoidAsync("r5.seleccionar", "busquedaEnvasado");
+        }
+    }
+
+    private void Seleccionar(EnvasadoProducto producto)
+    {
+        if (producto.Caducado || producto.LoteCaducado)
+        {
+            MostrarError($"Producto/lote caducado ({Fecha(producto.LoteCaducado ? producto.FechaCadLote : producto.FechaCad)}). No se puede envasar.");
+            return;
+        }
+        _seleccionado = producto;
+        _peso = 0;
+        _etiquetasSesion = 0;
+        _pesoAcumulado = 0;
+        _aviso = "";
+    }
+
+    private void VolverALista()
+    {
+        _seleccionado = null;
+        _aviso = "";
+    }
+
+    // Lee un peso estable de la báscula (Dibal por serie en Windows).
+    private async Task PesarAsync()
+    {
+        if (_pesando) return;
+
+        _pesando = true;
+        _aviso = "";
+        try
+        {
+            if (!Balanza.Conectada && !await Balanza.ConectarAsync())
+            {
+                MostrarError("No se pudo conectar con la báscula. Revisa el puerto en Ajustes.");
+                return;
+            }
+            var lectura = await Balanza.LeerPesoAsync();
+            if (lectura is null)
+            {
+                MostrarError("La báscula no devolvió un peso nuevo. Coloca el producto y reintenta.");
+                return;
+            }
+            _peso = lectura.Value.Kilos;
+        }
+        finally
+        {
+            _pesando = false;
+        }
+    }
+
+    // Genera la etiqueta (PDF del rdlc de R3 con EAN128 peso/pvp) y prepara la siguiente pesada.
+    private async Task EtiquetarAsync()
+    {
+        if (_ocupado || _seleccionado is null || _lote is null || _peso <= 0) return;
+
+        _ocupado = true;
+        _aviso = "";
+        try
+        {
+            var respuesta = await ServicioEnvasado.GetEtiquetaPdfAsync(
+                _seleccionado.Prod, _lote.Lote, _peso, _seleccionado.Pvp, _codAlmDest,
+                Sesion.Usuario!.Almacen.RegistroSanitario ?? "");
+            if (!respuesta.Ok || respuesta.Datos is null) { MostrarError(respuesta.Error); return; }
+
+            await Visor.AbrirAsync($"EtiqEnvasado_{_seleccionado.Prod}_{_lote.Lote}.pdf", respuesta.Datos);
+
+            _etiquetasSesion++;
+            _pesoAcumulado += _peso;
+            _tipoAviso = "exito";
+            _aviso = $"Etiqueta de {Cantidad(_peso, true)} kg generada ({Moneda(Math.Round(_peso * _seleccionado.Pvp, 2))}).";
+            _peso = 0;
+        }
+        finally
+        {
+            _ocupado = false;
+        }
+    }
+
+    private void MostrarError(string mensaje)
+    {
+        _tipoAviso = "error";
+        _aviso = mensaje;
+    }
+}

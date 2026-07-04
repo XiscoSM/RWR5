@@ -26,6 +26,7 @@ public static class CatalogoModulos
         [19] = new(19, "Pedido central", "/pedidoCentral", "pedido-central", true),
         [22] = new(22, "Informes", "/informes", "informes", true),
         [24] = new(24, "Preparación", "/preparacion", "preparacion", true),
+        [27] = new(27, "Pesar y etiquetar", "/envasado", "balanza", true),
         [33] = new(33, "Horarios", "/horarios", "informes", true),
         [34] = new(34, "Gestiones", "/gestiones", "informes", true),
     };
