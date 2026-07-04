@@ -41,6 +41,7 @@ public static class MauiProgram
             sp.GetRequiredService<RepositorioConfiguracion>().Cargar(config);
             return config;
         });
+        builder.Services.AddSingleton(new InfoApp(AppInfo.Current.VersionString));
         builder.Services.AddSingleton<CredencialesApi>();
         builder.Services.AddSingleton<IAlmacenSecretos, AlmacenSecretosMaui>();
         builder.Services.AddSingleton<IEstadoRed, EstadoRedMaui>();

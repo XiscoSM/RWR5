@@ -4,4 +4,7 @@
     <Project Path="src/R5.Core/R5.Core.csproj" />
     <Project Path="src/R5.UI/R5.UI.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/R5.Core.Tests/R5.Core.Tests.csproj" />
+  </Folder>
 </Solution>

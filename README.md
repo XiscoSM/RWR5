@@ -22,6 +22,25 @@ dotnet build src/R5.App/R5.App.csproj -f net10.0-windows10.0.19041.0
 dotnet build src/R5.App/R5.App.csproj -f net10.0-android
 ```
 
+## Tests y CI
+
+```bash
+dotnet test tests/R5.Core.Tests/R5.Core.Tests.csproj
+```
+
+GitHub Actions (`.github/workflows/ci.yml`) ejecuta los tests y compila el host Windows
+en cada push/PR. `release.yml` (manual) genera los instalables como artefactos.
+
+## Distribución
+
+```powershell
+scripts/publicar-windows.ps1   # → dist/R5-win-x64-vX.zip (autocontenido, sin runtime)
+scripts/publicar-android.ps1   # → dist/*.apk (firma debug: distribución interna)
+```
+
+La versión visible se controla con `ApplicationDisplayVersion` en `R5.App.csproj`
+(se muestra en la pantalla de Ajustes).
+
 ## Puesta en marcha de un dispositivo
 
 1. **Ajustes** → elegir entorno (Producción/Beta/Desarrollo/Local/Personalizado) → *Probar conexión*.

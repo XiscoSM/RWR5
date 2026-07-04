@@ -18,3 +18,4 @@ obj/
 ## Logs y temporales
 *.log
 *.tmp
+dist/

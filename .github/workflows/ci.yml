@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  # Tests de la lógica sin plataforma (R5.Core + R5.UI): rápido, en cada push.
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Test
+        run: dotnet test tests/R5.Core.Tests/R5.Core.Tests.csproj -c Release
+
+  # Compilación del host MAUI en Windows: detecta roturas de la app real.
+  app-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Instalar workload MAUI
+        run: dotnet workload install maui-windows
+      - name: Build
+        run: dotnet build src/R5.App/R5.App.csproj -f net10.0-windows10.0.19041.0 -c Release

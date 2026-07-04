@@ -1,0 +1,46 @@
+name: Release
+
+# Manual: genera los instalables y los sube como artefactos del workflow.
+# - Windows: carpeta autocontenida (unpackaged) comprimida en zip.
+# - Android: APK firmado con la clave debug (para distribución interna;
+#   cuando haya keystore propio, añadirlo como secreto y firmar aquí).
+on:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Instalar workload MAUI
+        run: dotnet workload install maui-windows
+      - name: Publish Windows (unpackaged)
+        run: >
+          dotnet publish src/R5.App/R5.App.csproj
+          -f net10.0-windows10.0.19041.0 -c Release
+          -p:WindowsPackageType=None -p:RuntimeIdentifierOverride=win-x64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: R5-windows
+          path: src/R5.App/bin/Release/net10.0-windows10.0.19041.0/win-x64/publish/
+
+  android:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Instalar workload MAUI
+        run: dotnet workload install maui
+      - name: Publish APK
+        run: >
+          dotnet publish src/R5.App/R5.App.csproj
+          -f net10.0-android -c Release -p:AndroidPackageFormats=apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: R5-android-apk
+          path: src/R5.App/bin/Release/net10.0-android/publish/*.apk
