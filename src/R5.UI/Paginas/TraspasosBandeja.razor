@@ -45,7 +45,7 @@
                     <span class="r5-doc__principal">
                         <span class="r5-doc__titulo">Traspaso @traspaso.NumTraspaso</span>
                         <span class="r5-doc__detalle">
-                            @traspaso.Fecha.ToString("dd/MM/yyyy")
+                            @Fecha(traspaso.Fecha)
                             · @(traspaso.AlmOrigen?.DescAlm ?? "?") → @(traspaso.AlmDest?.DescAlm ?? "?")
                         </span>
                     </span>

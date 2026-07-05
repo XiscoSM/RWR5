@@ -41,7 +41,7 @@
                     <span class="r5-doc__principal">
                         <span class="r5-doc__titulo">Pedido @prep.Pedido · @prep.Alm.DescAlm</span>
                         <span class="r5-doc__detalle">
-                            @prep.Fecha.ToString("dd/MM/yyyy")
+                            @Fecha(prep.Fecha)
                             @if (prep.CountPedidos > 1)
                             {
                                 <text> · agrupa @prep.CountPedidos pedidos</text>

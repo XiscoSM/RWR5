@@ -12,7 +12,7 @@
 
     <div class="r5-fila">
         <button class="r5-btn r5-btn--secundario" @onclick="Volver">← Inventario</button>
-        <h2>Contar · @(_fecha?.ToString("dd/MM/yyyy"))</h2>
+        <h2>Contar · @(Fecha(_fecha))</h2>
         <span class="r5-chip" style="margin-left:auto; background: var(--c-primario-claro); color: var(--c-primario-osc);">
             Terminal @Sesion.Usuario?.NumTerminal
         </span>

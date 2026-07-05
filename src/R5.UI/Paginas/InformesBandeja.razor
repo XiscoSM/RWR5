@@ -38,7 +38,7 @@
                     <span class="r5-doc__principal">
                         <span class="r5-doc__titulo">Informe @informe.NumInforme · @(informe.TipoInforme?.DescTipo ?? "")</span>
                         <span class="r5-doc__detalle">
-                            @informe.Fecha.ToString("dd/MM/yyyy")
+                            @Fecha(informe.Fecha)
                             @if (informe.AlmDest is not null && informe.AlmDest.CodAlm > 0)
                             {
                                 <text> · Destino: @informe.AlmDest.DescAlm</text>

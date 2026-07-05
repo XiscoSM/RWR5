@@ -43,10 +43,10 @@
                     <span class="r5-doc__principal">
                         <span class="r5-doc__titulo">Pedido @pedido.NumPedido</span>
                         <span class="r5-doc__detalle">
-                            @pedido.Fecha.ToString("dd/MM/yyyy") · @pedido.Prov.DescProv
+                            @Fecha(pedido.Fecha) · @pedido.Prov.DescProv
                             @if (pedido.FechaPrevEnvio.Year > 1950)
                             {
-                                <text> · Envío prev.: @pedido.FechaPrevEnvio.ToString("dd/MM/yyyy")</text>
+                                <text> · Envío prev.: @Fecha(pedido.FechaPrevEnvio)</text>
                             }
                         </span>
                     </span>

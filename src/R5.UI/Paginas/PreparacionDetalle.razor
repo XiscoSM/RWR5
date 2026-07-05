@@ -11,7 +11,7 @@
 
     <div class="r5-fila">
         <button class="r5-btn r5-btn--secundario" @onclick="Volver">← Preparación</button>
-        <h2>Pedido @Pedido · @(_fecha?.ToString("dd/MM/yyyy"))</h2>
+        <h2>Pedido @Pedido · @(Fecha(_fecha))</h2>
         <div class="r5-segmento">
             <button class="@(!_verPreparadas ? "activo" : "")" @onclick="() => CambiarVistaAsync(false)">Pendientes</button>
             <button class="@(_verPreparadas ? "activo" : "")" @onclick="() => CambiarVistaAsync(true)">Preparadas</button>

@@ -129,7 +129,7 @@
                         @if (GestionSel.PermiteFechaFin && _fechaFin is not null && _fechaFin >= _fechaIni)
                         {
                             <span class="r5-texto-suave r5-texto-sm">
-                                Total: @((_fechaFin.Value - _fechaIni).Days + 1) días (del @_fechaIni.ToString("dd/MM/yy") al @_fechaFin.Value.ToString("dd/MM/yy"))
+                                Total: @((_fechaFin.Value - _fechaIni).Days + 1) días (del @Fecha(_fechaIni) al @Fecha(_fechaFin))
                             </span>
                         }
                     }
@@ -202,7 +202,7 @@
                                 @gestion.DescFirma · Doc. @gestion.Mov
                                 @if (gestion.FechaFirma is not null)
                                 {
-                                    <text> · @gestion.FechaFirma.Value.ToString("dd/MM/yyyy")</text>
+                                    <text> · @Fecha(gestion.FechaFirma)</text>
                                 }
                                 @if (_vista == 2 && gestion.Usuario > 0)
                                 {

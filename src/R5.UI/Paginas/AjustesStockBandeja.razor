@@ -43,7 +43,7 @@
                     <span class="r5-doc__principal">
                         <span class="r5-doc__titulo">Ajuste @ajuste.NumAjuste · @(ajuste.TipoAjuste.DescTipo ?? "")</span>
                         <span class="r5-doc__detalle">
-                            @ajuste.Fecha.ToString("dd/MM/yyyy")
+                            @Fecha(ajuste.Fecha)
                             @if (ajuste.AlmDest is not null && ajuste.AlmDest.CodAlm != Sesion.Usuario!.Almacen.CodAlm)
                             {
                                 <text> · Destino: @ajuste.AlmDest.DescAlm</text>

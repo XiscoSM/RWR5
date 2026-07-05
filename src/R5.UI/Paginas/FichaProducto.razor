@@ -53,7 +53,7 @@
                     <div class="r5-fila" style="gap: var(--esp-2); flex-wrap: wrap;">
                         @if (EnOferta)
                         {
-                            <span class="r5-badge r5-badge--oferta">Oferta hasta @_producto.OfertaHasta!.Value.ToString("dd/MM/yy")</span>
+                            <span class="r5-badge r5-badge--oferta">Oferta hasta @Fecha(_producto.OfertaHasta)</span>
                         }
                         @if (_producto.FueraColeccion)
                         {

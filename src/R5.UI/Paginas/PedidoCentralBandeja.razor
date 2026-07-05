@@ -46,7 +46,7 @@
                     <span class="r5-doc__principal">
                         <span class="r5-doc__titulo">Pedido @pedido.NumPedido</span>
                         <span class="r5-doc__detalle">
-                            @pedido.Fecha.ToString("dd/MM/yyyy")
+                            @Fecha(pedido.Fecha)
                             @if (pedido.AlmCentral is not null)
                             {
                                 <text> · Central: @pedido.AlmCentral.DescAlm</text>

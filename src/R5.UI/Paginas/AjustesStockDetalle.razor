@@ -9,7 +9,7 @@
 
     <div class="r5-fila" style="flex-wrap: wrap;">
         <button class="r5-btn r5-btn--secundario" @onclick="Volver">← Ajustes</button>
-        <h2>Ajuste @NumAjuste · @(_fecha?.ToString("dd/MM/yyyy"))</h2>
+        <h2>Ajuste @NumAjuste · @(Fecha(_fecha))</h2>
         @if (Reg is not null)
         {
             <span class="r5-badge @(_registrado ? "r5-badge--cerrado" : "r5-badge--abierto")">

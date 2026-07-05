@@ -51,7 +51,7 @@
                             }
                         </span>
                         <span class="r5-doc__detalle">
-                            @albaran.Fecha.ToString("dd/MM/yyyy") · @albaran.Prov.DescProv
+                            @Fecha(albaran.Fecha) · @albaran.Prov.DescProv
                             @if (albaran.NumPedido > 0)
                             {
                                 <text> · Pedido @albaran.NumPedido</text>
