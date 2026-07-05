@@ -122,6 +122,13 @@ h3 { font-size: var(--texto-lg); }
     white-space: nowrap;
 }
 
+/* Chip sobre fondo claro (tarjetas): el translúcido blanco de .r5-chip no se ve ahí. */
+.r5-chip--suave {
+    background: var(--c-primario-claro);
+    color: var(--c-primario-osc);
+    font-weight: 600;
+}
+
 .r5-barra__icono { width: 20px; height: 20px; }
 
 /* Pantalla estrecha (móvil / tablet en vertical apretada): la barra no debe desbordar.
@@ -204,6 +211,14 @@ h3 { font-size: var(--texto-lg); }
 .r5-btn--sm { min-height: 40px; padding: 0 var(--esp-4); font-size: var(--texto-sm); flex-shrink: 0; }
 .r5-btn--fantasma { background: transparent; color: var(--c-primario); }
 .r5-btn--bloque { width: 100%; }
+
+/* Foco visible SOLO por teclado (no en toque/click): anillo accesible sin molestar al táctil. */
+.r5-btn:focus-visible,
+.r5-segmento button:focus-visible,
+.r5-doc:focus-visible {
+    outline: 3px solid var(--c-borde-foco);
+    outline-offset: 2px;
+}
 
 /* ---------- Formularios ---------- */
 .r5-campo { display: flex; flex-direction: column; gap: var(--esp-2); }
@@ -547,6 +562,8 @@ h3 { font-size: var(--texto-lg); }
 }
 
 .r5-doc:active { transform: scale(0.99); box-shadow: var(--sombra-2); }
+.r5-doc:disabled { opacity: 0.5; cursor: default; box-shadow: none; }
+.r5-doc:disabled:active { transform: none; }
 
 .r5-doc__principal { display: flex; flex-direction: column; gap: var(--esp-1); min-width: 0; }
 .r5-doc__titulo { font-weight: 600; font-size: var(--texto-lg); }

@@ -61,7 +61,7 @@
                 <input id="busquedaTraspaso" class="r5-input" type="text" inputmode="numeric"
                        placeholder="Escanea un EAN o teclea el código de producto"
                        @bind="_codigo" @bind:event="oninput" disabled="@_ocupado" />
-                <button type="submit" class="r5-btn r5-btn--primario" disabled="@(_ocupado || string.IsNullOrWhiteSpace(_codigo))">
+                <button type="submit" class="r5-btn r5-btn--secundario" disabled="@(_ocupado || string.IsNullOrWhiteSpace(_codigo))">
                     Buscar
                 </button>
             </form>
@@ -105,6 +105,20 @@
                 </button>
             </div>
         }
+
+        <PanelLineas Items="_lineasDoc" Cargando="_cargandoLineas" Titulo="Líneas del traspaso">
+            <Cabecera>
+                <th>Cód.</th><th>Producto</th><th class="num">Cant.</th><th class="num">Importe</th>
+            </Cabecera>
+            <Fila Context="l">
+                <tr @key="l.Linea">
+                    <td>@l.Prod.CodProd</td>
+                    <td>@l.Prod.DescProd</td>
+                    <td class="num">@Cantidad(l.Cant, l.Prod.DecimalesEnCant)</td>
+                    <td class="num">@Moneda(l.Importe)</td>
+                </tr>
+            </Fila>
+        </PanelLineas>
     }
 </div>
 </GuardiaModulo>
@@ -124,6 +138,8 @@
     private decimal _cantidad;
     private int _numTraspaso;
     private int _lineasAnadidas;
+    private List<TraspasoLin> _lineasDoc = new();
+    private bool _cargandoLineas;
     private readonly DateTime _fecha = DateTime.Today;
 
     private short UnidCaja => _linea is null ? (short)1
@@ -245,6 +261,7 @@
             _aviso = $"{_linea.Prod.DescProd}: {Cantidad(_cantidad, _linea.Prod.DecimalesEnCant)} añadido al traspaso {_numTraspaso}.";
             _linea = null;
             _codigo = "";
+            _ = RefrescarLineasAsync();
         }
         finally
         {
@@ -252,6 +269,17 @@
             StateHasChanged();
             await JS.InvokeVoidAsync("r5.seleccionar", "busquedaTraspaso");
         }
+    }
+
+    // Refresca el panel de líneas sin bloquear el siguiente escaneo (ApiWeb no lanza).
+    private async Task RefrescarLineasAsync()
+    {
+        if (_numTraspaso <= 0) return;
+        _cargandoLineas = true;
+        var r = await Traspasos.GetLineasAsync(_numTraspaso, _fecha);
+        if (r.Ok && r.Datos is not null) _lineasDoc = r.Datos;
+        _cargandoLineas = false;
+        StateHasChanged();
     }
 
     // Registrar el traspaso: irreversible desde la app (genera el movimiento en RW).

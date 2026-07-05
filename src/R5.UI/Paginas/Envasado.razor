@@ -63,7 +63,8 @@
                 <div class="r5-docs">
                     @foreach (var producto in _envasables)
                     {
-                        <button @key="producto.Prod" class="r5-doc" @onclick="() => Seleccionar(producto)">
+                        <button @key="producto.Prod" class="r5-doc" disabled="@(producto.Caducado || producto.LoteCaducado)"
+                                @onclick="() => Seleccionar(producto)">
                             <Icono Nombre="balanza" Clase="r5-modulo__icono" />
                             <span class="r5-doc__principal">
                                 <span class="r5-doc__titulo">@producto.DescProd</span>
@@ -217,6 +218,18 @@
         }
     }
 
+    private bool _enfocarPeso;
+
+    // Foco al campo de peso en cuanto aparece (tras elegir producto o etiquetar una pesada).
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_enfocarPeso)
+        {
+            _enfocarPeso = false;
+            await JS.InvokeVoidAsync("r5.seleccionar", "pesoEnvasado");
+        }
+    }
+
     private void Seleccionar(EnvasadoProducto producto)
     {
         if (producto.Caducado || producto.LoteCaducado)
@@ -229,6 +242,7 @@
         _etiquetasSesion = 0;
         _pesoAcumulado = 0;
         _aviso = "";
+        _enfocarPeso = true;
     }
 
     private void VolverALista()
@@ -270,6 +284,10 @@
     {
         if (_ocupado || _seleccionado is null || _lote is null || _peso <= 0) return;
 
+        // Tope de sanidad: una lectura del escáner caída en el campo de peso (>=100 kg) no
+        // puede acabar en una etiqueta de envasado (paquetes de pocos kg).
+        if (_peso >= 100) { MostrarError($"Peso {Cantidad(_peso, true)} kg no válido: ¿has escaneado un código en el campo de peso?"); return; }
+
         _ocupado = true;
         _aviso = "";
         try
@@ -296,6 +314,7 @@
             {
                 MostrarError("Etiqueta generada, pero no se pudo abrir el PDF para imprimir: " + ex.Message);
             }
+            _enfocarPeso = true; // listo para la siguiente pesada sin tocar la pantalla
         }
         finally
         {

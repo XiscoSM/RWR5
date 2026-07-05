@@ -171,6 +171,12 @@
                 _error = "No se pudo cargar la definición del informe: " + tareaInforme.Result.Error;
                 return;
             }
+            // Estado real del servidor por encima del ?reg= de la bandeja (deep-link robusto).
+            if (tareaInforme.Result.Datos is { NumInforme: > 0 } cab)
+            {
+                Reg = cab.Estado ? 1 : 0;
+                _registrado = cab.Estado;
+            }
             _tipo = tareaInforme.Result.Datos?.TipoInforme;
             // La cabecera trae el tipo sin su configuración de campos: se completa del catálogo.
             if (_tipo is not null)

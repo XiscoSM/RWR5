@@ -1,0 +1,40 @@
+@* Líneas ya capturadas en el documento en curso. Da visibilidad de lo que se lleva
+   (antes las altas no mostraban nada) para detectar un error de cantidad y corregirlo
+   re-escaneando el producto: el alta usa InsertUpdate, así que re-añadir sobrescribe.
+   Genérico: cada alta aporta su cabecera y su fila. *@
+@typeparam TItem
+
+@if (Items.Count > 0)
+{
+    <div class="r5-tarjeta r5-columna">
+        <div class="r5-fila" style="align-items:baseline">
+            <h3 style="margin:0">@Titulo</h3>
+            <span class="r5-chip r5-chip--suave">@Items.Count</span>
+            @if (Cargando)
+            {
+                <span class="r5-texto-suave" style="margin-left:auto">Actualizando…</span>
+            }
+        </div>
+        <div class="r5-tabla-scroll">
+            <table class="r5-tabla">
+                <thead>
+                    <tr>@Cabecera</tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in Items)
+                    {
+                        @Fila(item)
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<TItem> Items { get; set; } = Array.Empty<TItem>();
+    [Parameter, EditorRequired] public RenderFragment Cabecera { get; set; } = default!;
+    [Parameter, EditorRequired] public RenderFragment<TItem> Fila { get; set; } = default!;
+    [Parameter] public string Titulo { get; set; } = "Líneas añadidas";
+    [Parameter] public bool Cargando { get; set; }
+}

@@ -235,6 +235,9 @@
         {
             _buscando = false;
             StateHasChanged();
+            // Feedback sonoro al identificar el producto por escaneo (el error ya suena en Aviso).
+            if (_producto is not null && _error.Length == 0)
+                await JS.InvokeVoidAsync("r5.sonido", "exito");
             // Foco y selección de vuelta al buscador: el siguiente escaneo machaca el anterior.
             await JS.InvokeVoidAsync("r5.seleccionar", "busquedaProducto");
         }

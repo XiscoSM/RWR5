@@ -14,8 +14,12 @@ public sealed class AjusteService
     }
 
     /// <summary>GET Ajuste/List/{codAlm}?codUsuario=&amp;registrado=&amp;top= — ajustes del usuario.</summary>
-    public Task<ApiRespuesta<List<Ajuste>>> GetAjustesAsync(short codAlm, short codUsuario, bool registrado, short top = 50, CancellationToken ct = default)
+    public Task<ApiRespuesta<List<Ajuste>>> GetAjustesAsync(short codAlm, short codUsuario, bool registrado, short top = 300, CancellationToken ct = default)
         => _api.GetAsync<List<Ajuste>>($"Ajuste/List/{codAlm}?codUsuario={codUsuario}&registrado={registrado}&top={top}", ct);
+
+    /// <summary>GET Ajuste/{num}/{fecha} — cabecera del ajuste (estado real Reg, tipo, importe).</summary>
+    public Task<ApiRespuesta<Ajuste>> GetCabeceraAsync(int numAjuste, DateTime fecha, CancellationToken ct = default)
+        => _api.GetAsync<Ajuste>($"Ajuste/{numAjuste}/{fecha:yyyy-MM-dd}", ct);
 
     /// <summary>GET Ajuste/{num}/{fecha}/Lineas/Agrup — líneas agrupadas del ajuste.</summary>
     public Task<ApiRespuesta<List<AjusteLin>>> GetLineasAsync(int numAjuste, DateTime fecha, short top = 200, CancellationToken ct = default)

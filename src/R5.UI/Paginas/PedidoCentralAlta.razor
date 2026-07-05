@@ -53,7 +53,7 @@
             <input id="busquedaPedido" class="r5-input" type="text" inputmode="numeric"
                    placeholder="Escanea un EAN o teclea el código de producto"
                    @bind="_codigo" @bind:event="oninput" autofocus disabled="@(_ocupado || _centros.Count == 0)" />
-            <button type="submit" class="r5-btn r5-btn--primario"
+            <button type="submit" class="r5-btn r5-btn--secundario"
                     disabled="@(_ocupado || _centros.Count == 0 || string.IsNullOrWhiteSpace(_codigo))">
                 Buscar
             </button>
@@ -104,6 +104,19 @@
             </button>
         </div>
     }
+
+    <PanelLineas Items="_lineasDoc" Cargando="_cargandoLineas" Titulo="Líneas del pedido">
+        <Cabecera>
+            <th>Cód.</th><th>Producto</th><th class="num">Cant.</th>
+        </Cabecera>
+        <Fila Context="l">
+            <tr @key="l.Prod.CodProd">
+                <td>@l.Prod.CodProd</td>
+                <td>@l.Prod.DescProd</td>
+                <td class="num">@Cantidad(l.CantPedida, l.Prod.DecimalesEnCant)</td>
+            </tr>
+        </Fila>
+    </PanelLineas>
 </div>
 </GuardiaModulo>
 
@@ -123,6 +136,8 @@
     private int _ultimoPedido;
     private DateTime _ultimaFecha;
     private short _ultimoAlmCentral;
+    private List<PedidoCentralLin> _lineasDoc = new();
+    private bool _cargandoLineas;
 
     protected override Task OnInitializedAsync() => CargarCentrosAsync();
 
@@ -251,6 +266,7 @@
             _linea = null;
             _dto = null;
             _codigo = "";
+            _ = RefrescarLineasAsync();
         }
         finally
         {
@@ -258,6 +274,17 @@
             StateHasChanged();
             await JS.InvokeVoidAsync("r5.seleccionar", "busquedaPedido");
         }
+    }
+
+    // Refresca el panel de líneas sin bloquear el siguiente escaneo (ApiWeb no lanza).
+    private async Task RefrescarLineasAsync()
+    {
+        if (_ultimoPedido <= 0) return;
+        _cargandoLineas = true;
+        var r = await Pedidos.GetLineasAsync(Sesion.Usuario!.Almacen.CodAlm, _ultimaFecha, _ultimoPedido);
+        if (r.Ok && r.Datos is not null) _lineasDoc = r.Datos;
+        _cargandoLineas = false;
+        StateHasChanged();
     }
 
     private void MostrarError(string mensaje)

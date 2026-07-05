@@ -11,8 +11,8 @@
 
     <div class="r5-fila">
         <div class="r5-segmento">
-            <button class="@(!_registrados ? "activo" : "")" @onclick="() => CambiarFiltroAsync(false)" disabled="@_cargando">Pendientes</button>
-            <button class="@(_registrados ? "activo" : "")" @onclick="() => CambiarFiltroAsync(true)" disabled="@_cargando">Registrados</button>
+            <button class="@(!_registrados ? "activo" : "")" aria-pressed="@(!_registrados)" @onclick="() => CambiarFiltroAsync(false)" disabled="@_cargando">Pendientes</button>
+            <button class="@(_registrados ? "activo" : "")" aria-pressed="@_registrados" @onclick="() => CambiarFiltroAsync(true)" disabled="@_cargando">Registrados</button>
         </div>
         <button class="r5-btn r5-btn--primario" style="margin-left:auto"
                 @onclick="@(() => Nav.NavigateTo("/recepcionAlb/alta"))">
@@ -33,6 +33,7 @@
         <div class="r5-cargando">
             <Icono Nombre="recepcion" Clase="r5-modulo__icono" />
             <span>No tienes albaranes @(_registrados ? "registrados" : "pendientes") en este almacén.</span>
+            <button class="r5-btn r5-btn--primario" @onclick='() => Nav.NavigateTo("/recepcionAlb/alta")'>+ Nueva recepción</button>
         </div>
     }
     else
@@ -67,11 +68,16 @@
                 </button>
             </Fila>
         </ListaPaginada>
+        @if (_albaranes.Count >= Tope)
+        {
+            <p class="r5-texto-suave r5-texto-sm">Mostrando los @Tope más recientes; puede haber más. Afina con el filtro Pendientes/Registrados.</p>
+        }
     }
 </div>
 </GuardiaModulo>
 
 @code {
+    private const short Tope = 300;
     private bool _registrados;
     private bool _cargando = true;
     private string _error = "";
@@ -95,7 +101,7 @@
         try
         {
             var respuesta = await Albaranes.GetAlbaranesAsync(
-                Sesion.Usuario!.Almacen.CodAlm, Sesion.Usuario.CodUsuario, _registrados);
+                Sesion.Usuario!.Almacen.CodAlm, Sesion.Usuario.CodUsuario, _registrados, Tope);
             if (!respuesta.Ok)
             {
                 _error = respuesta.Error;

@@ -29,7 +29,7 @@
                 <input id="busquedaConteo" class="r5-input" type="text" inputmode="numeric"
                        placeholder="Escanea un EAN o teclea el código de producto"
                        @bind="_codigo" @bind:event="oninput" autofocus disabled="@_ocupado" />
-                <button type="submit" class="r5-btn r5-btn--primario" disabled="@(_ocupado || string.IsNullOrWhiteSpace(_codigo))">
+                <button type="submit" class="r5-btn r5-btn--secundario" disabled="@(_ocupado || string.IsNullOrWhiteSpace(_codigo))">
                     Buscar
                 </button>
             </form>
@@ -67,6 +67,19 @@
                 </button>
             </div>
         }
+
+        <PanelLineas Items="_lineasDoc" Cargando="_cargandoLineas" Titulo="Contado en este terminal">
+            <Cabecera>
+                <th>Cód.</th><th>Producto</th><th class="num">Cant.</th>
+            </Cabecera>
+            <Fila Context="l">
+                <tr @key="@($"{l.Prod.CodProd}-{l.FechaHoraIntro.Ticks}")">
+                    <td>@l.Prod.CodProd</td>
+                    <td>@l.Prod.DescProd</td>
+                    <td class="num">@Cantidad(l.Cant, l.Prod.DecimalesEnCant)</td>
+                </tr>
+            </Fila>
+        </PanelLineas>
     }
 </div>
 </GuardiaModulo>
@@ -84,11 +97,25 @@
     private InventarioLin? _linea;
     private long _eanEscaneado;
     private decimal _cantidad;
+    private List<InventarioLin> _lineasDoc = new();
+    private bool _cargandoLineas;
 
     protected override void OnInitialized()
     {
         _fecha = DateTime.TryParseExact(FechaRuta, "yyyy-MM-dd", null,
             System.Globalization.DateTimeStyles.None, out var fecha) ? fecha : null;
+        _ = RefrescarLineasAsync(); // muestra lo ya contado en este terminal al entrar
+    }
+
+    // Refresca el log de conteos del terminal sin bloquear el siguiente escaneo.
+    private async Task RefrescarLineasAsync()
+    {
+        if (_fecha is null || !Sesion.Autenticado) return;
+        _cargandoLineas = true;
+        var r = await Inventarios.GetLineasAsync(Sesion.Usuario!.Almacen.CodAlm, _fecha.Value, Sesion.Usuario.NumTerminal);
+        if (r.Ok && r.Datos is not null) _lineasDoc = r.Datos;
+        _cargandoLineas = false;
+        StateHasChanged();
     }
 
     private async Task BuscarAsync()
@@ -164,6 +191,7 @@
             _aviso = $"{_linea.Prod.DescProd}: +{Cantidad(_cantidad, _linea.Prod.DecimalesEnCant)} contado (total {Cantidad(_linea.CantTotal + _cantidad, _linea.Prod.DecimalesEnCant)}).";
             _linea = null;
             _codigo = "";
+            _ = RefrescarLineasAsync();
         }
         finally
         {

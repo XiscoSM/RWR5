@@ -17,6 +17,10 @@ public sealed class PedidoCompraService
     public Task<ApiRespuesta<List<PedidoCompra>>> GetPedidosAsync(short codAlm, short codUsuario, bool reg, CancellationToken ct = default)
         => _api.GetAsync<List<PedidoCompra>>($"PedidoCompra/List/{codAlm}?codUsuario={codUsuario}&reg={reg}", ct);
 
+    /// <summary>GET PedidoCompra/{num} — cabecera del pedido (estado real Reg, proveedor, fechas).</summary>
+    public Task<ApiRespuesta<PedidoCompra>> GetCabeceraAsync(int numPedido, CancellationToken ct = default)
+        => _api.GetAsync<PedidoCompra>($"PedidoCompra/{numPedido}", ct);
+
     /// <summary>GET PedidoCompra/{num}/Lineas — detalle del pedido.</summary>
     public Task<ApiRespuesta<List<PedidoCompraLin>>> GetLineasAsync(int numPedido, short top = 200, CancellationToken ct = default)
         => _api.GetAsync<List<PedidoCompraLin>>($"PedidoCompra/{numPedido}/Lineas?top={top}", ct);

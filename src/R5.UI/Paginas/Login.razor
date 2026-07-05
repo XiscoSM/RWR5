@@ -66,6 +66,8 @@
 
     protected override void OnInitialized()
     {
+        // Si ya hay sesión (p. ej. se llegó a /login con el botón atrás), no re-loguear.
+        if (Sesion.Autenticado) { Nav.NavigateTo("/inicio", replace: true); return; }
         if (Config.UltimoUsuario > 0) _codUsuario = Config.UltimoUsuario;
     }
 

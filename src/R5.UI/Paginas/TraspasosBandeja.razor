@@ -11,8 +11,8 @@
 
     <div class="r5-fila">
         <div class="r5-segmento">
-            <button class="@(!_registrados ? "activo" : "")" @onclick="() => CambiarFiltroAsync(false)" disabled="@_cargando">Pendientes</button>
-            <button class="@(_registrados ? "activo" : "")" @onclick="() => CambiarFiltroAsync(true)" disabled="@_cargando">Registrados</button>
+            <button class="@(!_registrados ? "activo" : "")" aria-pressed="@(!_registrados)" @onclick="() => CambiarFiltroAsync(false)" disabled="@_cargando">Pendientes</button>
+            <button class="@(_registrados ? "activo" : "")" aria-pressed="@_registrados" @onclick="() => CambiarFiltroAsync(true)" disabled="@_cargando">Registrados</button>
         </div>
         <button class="r5-btn r5-btn--primario" style="margin-left:auto"
                 @onclick="@(() => Nav.NavigateTo("/traspasos/alta"))">
@@ -33,6 +33,7 @@
         <div class="r5-cargando">
             <Icono Nombre="traspasos" Clase="r5-modulo__icono" />
             <span>No tienes traspasos @(_registrados ? "registrados" : "pendientes") en este almacén.</span>
+            <button class="r5-btn r5-btn--primario" @onclick='() => Nav.NavigateTo("/traspasos/alta")'>+ Nuevo traspaso</button>
         </div>
     }
     else

@@ -28,17 +28,24 @@ Hecho y verificado en la app:
 - **UX**: foco del escáner tras elegir tipo/gama (4 altas) y a la contraseña en Login; RecepcionAlbAlta ya no falla en silencio sin nº de albarán; logout en dos pasos; `Visor.AbrirAsync` con try/catch (Horarios, Envasado); Login limpia pwd tras error y deshabilita Entrar sin enrolar.
 - **Formato/responsive**: barrido de fechas de display a `Formato.Fecha` (oculta 01/01/1900); tablas con scroll horizontal (`.r5-tabla-scroll`); barra superior no desborda <720px.
 
-## P1 — pendiente (requiere API o decisión de producto)
+## P1 — aplicados (2ª tanda, additivo sin procs nuevos)
+
+Hecho y compilado (0 err/0 warn, 16 tests verdes); verificación interactiva de escaneo pendiente de QA en TEST:
+- **Lista de líneas visible en las 7 altas** (`PanelLineas` genérico): tras cada añadido se recarga del endpoint de líneas ya existente y se muestra en tabla. Da visibilidad de lo capturado; la corrección de cantidad se hace re-escaneando el producto (el POST es InsertUpdate). Inventario muestra "Contado en este terminal".
+- **Cabecera real del servidor en los 4 detalles con endpoint** (PedidoCompra `GET /{num}`, RecepcionAlb `GET /{num}/{fecha}`, Ajuste `GET /{num}/{fecha}`, Informe `GET /{num}/Informe`): el estado (`Reg`/`Estado`) del servidor manda sobre el `?reg=` de la bandeja → deep-link robusto (badge + acción correctos sin query). Cargada en paralelo con las líneas.
+- **Truncado**: bandejas Recepción y Ajustes suben `top` 50→300 y avisan ("Mostrando los 300 más recientes…") cuando se llega al tope.
+
+## P1 — pendiente (requiere API/proc nuevo o decisión de producto)
 
 **Funcional / datos**
-- Detalles sin cabecera del servidor (necesita endpoint aditivo en WebApiRW): PedidoCentral/PedidoCompra/RecepcionAlb dependen del estado que les pasa la bandeja (`?reg=`, ya mitigado); lo robusto es cargar la cabecera real (`Reg`, proveedor, importes) y no fiarse del query. Deep-link sin query pierde botón/badge.
-- "Total" del aviso de conteo calculado en cliente: con varios terminales contando, miente. Usar el total que devuelva el proc o etiquetar "de este terminal".
+- Cabecera de **PedidoCentral** y **Traspasos**: no existe proc de cabecera por número (los otros 4 sí). Siguen con `?reg=`. Requiere `PROC_…Cab_Select` nuevo.
+- "Total" del conteo global multi-terminal: el panel por-terminal ya da visibilidad honesta ("este terminal"); el total real entre terminales necesita endpoint/proc.
 - InventariosConteo: conteo aditivo sin "corregir último" (el tope de sanidad ya evita lo catastrófico).
-- Bandejas Recepción/PedidoCompra: `top=50` del servidor trunca en silencio; `top=200` en líneas de albarán ídem. Subir el límite o filtrar/avisar.
+- Bandeja **PedidoCompra**: el `top=50` lo impone el servidor sin parámetro; subirlo necesita que la API acepte `top`.
 
 **Completitud (usable de extremo a extremo)**
-- Altas sin lista de líneas añadidas ni borrar/corregir línea (las 4 altas + pedido central): un error de cantidad hoy no tiene corrección en la app.
-- Recepción contra pedido de compra: `NumPedido=0` hardcodeado aunque API y UI ya lo soportan a medias — el circuito pedido→recepción queda cojo.
+- Borrar/anular una línea desde las altas: hoy solo se corrige re-escaneando (sobrescribe). El borrado real necesita endpoint DELETE de línea + proc.
+- Recepción contra pedido de compra: `NumPedido=0` hardcodeado aunque API y proc ya lo soportan — falta el flujo de UI (elegir el pedido pendiente) y decidir cómo se elige.
 - PedidoCentralDetalle de pedido abierto: sin editar/borrar líneas.
 - PreparacionDetalle: no se puede revisar el contenido del pool sin asignárselo; asignación puede "robar" trabajo sin confirmación.
 - CambioAlmacen: exige saberse el número de memoria (sin lista de almacenes permitidos).
@@ -49,19 +56,23 @@ Hecho y verificado en la app:
 - RecepcionAlbAlta / PedidoCompraAlta: el nº de albarán / proveedor queda incorregible tras la primera línea (`disabled` cuando ya hay documento). Permitir editar con confirmación.
 - Horarios vista "Actual" no muestra de qué semana es el cuadro (necesita el rango de fechas de la API).
 
-## P2 — pulido (selección)
+## P2 — aplicados
 
-- Jerarquía: "Buscar" no debe ser primario en las altas (el escáner ya hace submit); valorar `--peligro` para todos los registros irreversibles o para ninguno.
-- Inputs `type="number"` → `type="text" + inputmode` (spinners y "e"/"-" en WebView).
-- Estados vacíos con CTA ("+ Nuevo…" dentro del vacío); unificar Etiquetas/Envasado al bloque icono+texto.
-- Accesibilidad: `aria-label` en botones icon-only de la barra, `aria-pressed` en segmentos, `:focus-visible` en botones. Contraste de tokens ya pasa AA (verificado).
-- MainLayout: título por switch hardcodeado → CascadingValue antes de que crezca el catálogo.
-- Banner sin conexión: deshabilitar submits mientras no haya red.
-- Refresco manual en bandejas (pool de preparación sobre todo); filtro por proveedor en recepción.
-- Etiquetas: cambiar de modo con producto cargado no limpia `_producto`; tarjeta de cola visible en modo "día" donde no aplica.
-- Envasado: peso manual sin techo razonable; caducados como botones normales; foco al peso tras etiquetar.
-- Login: redirigir a /inicio si ya hay sesión.
-- Sonido también al abrir ficha por escaneo (FichaProducto no emite aviso en éxito).
+- **Jerarquía**: "Buscar" pasa a secundario en las 7 altas (el escáner ya hace submit; Añadir/Registrar quedan como únicos primarios).
+- **Estados vacíos con CTA**: "+ Nuevo…" dentro del vacío en las bandejas de Recepción, Ajustes, PedidoCompra y Traspasos.
+- **Accesibilidad**: `aria-label` en los botones icon-only de la barra (Inicio, Salir); `aria-pressed` en los segmentos (bandejas, Etiquetas, Preparación); `:focus-visible` global en botones/segmentos/filas.
+- **Etiquetas**: cambiar de modo limpia el producto cargado (evita solicitar en el modo equivocado); la tarjeta de cola solo se muestra en modo PDA.
+- **Envasado**: tope de sanidad al peso (≥100 kg); los caducados quedan deshabilitados y atenuados (no invitan a pulsar); foco al peso tras elegir producto y tras etiquetar.
+- **Login**: redirige a /inicio si ya hay sesión (evita re-loguear con el botón atrás).
+- **FichaProducto**: sonido de éxito al identificar por escaneo.
+- **Preparación**: botón "Actualizar" (el pool cambia según trabajan otros; la lista no se auto-refresca).
+
+## P2 — deferido (con motivo)
+
+- Inputs `type="number"` → `type="text" + inputmode`: **riesgo de locale** (coma vs punto decimal al parsear `@bind` en cultura es-ES). Necesita decidir el manejo de decimales antes de tocar los campos de cantidad; se deja como está para no romper la captura.
+- MainLayout: título por switch → CascadingValue. Cosmético; el switch basta hasta que crezca el catálogo.
+- Banner sin conexión deshabilitando submits: hoy los envíos sin red ya fallan con mensaje y el banner avisa; deshabilitar cada submit es transversal (inyectar `IEstadoRed` en todas las páginas) — pendiente si se quiere el refuerzo.
+- Filtro por proveedor en recepción: necesita infra de filtro (y probablemente parámetro en la API).
 
 ## Justificación de posiciones (área 4 del encargo)
 

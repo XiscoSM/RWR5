@@ -149,13 +149,25 @@
 
         try
         {
-            var respuesta = await Pedidos.GetLineasAsync(NumPedido);
-            if (!respuesta.Ok)
+            // Cabecera + líneas en paralelo. La cabecera del servidor manda sobre el
+            // estado que pasó la bandeja (?reg=): así el deep-link sin query también
+            // muestra el badge y ofrece la acción correcta.
+            var tCab = Pedidos.GetCabeceraAsync(NumPedido);
+            var tLin = Pedidos.GetLineasAsync(NumPedido);
+            await Task.WhenAll(tCab, tLin);
+
+            if (tCab.Result.Ok && tCab.Result.Datos is { NumPedido: > 0 } cab)
             {
-                _error = respuesta.Error;
+                Reg = cab.Reg ? 1 : 0;
+                _registrado = cab.Reg;
+            }
+
+            if (!tLin.Result.Ok)
+            {
+                _error = tLin.Result.Error;
                 return;
             }
-            _lineas = respuesta.Datos ?? new();
+            _lineas = tLin.Result.Datos ?? new();
         }
         finally
         {

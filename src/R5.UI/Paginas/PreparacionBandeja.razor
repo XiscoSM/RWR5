@@ -11,9 +11,14 @@
 
     <div class="r5-fila">
         <div class="r5-segmento">
-            <button class="@(!_verCerrados ? "activo" : "")" @onclick="() => CambiarVistaAsync(false)" disabled="@_cargando">Mis preparaciones</button>
-            <button class="@(_verCerrados ? "activo" : "")" @onclick="() => CambiarVistaAsync(true)" disabled="@_cargando">Pedidos cerrados</button>
+            <button class="@(!_verCerrados ? "activo" : "")" aria-pressed="@(!_verCerrados)" @onclick="() => CambiarVistaAsync(false)" disabled="@_cargando">Mis preparaciones</button>
+            <button class="@(_verCerrados ? "activo" : "")" aria-pressed="@_verCerrados" @onclick="() => CambiarVistaAsync(true)" disabled="@_cargando">Pedidos cerrados</button>
         </div>
+        @* El pool cambia según trabajan otros preparadores: refresco manual para no
+           quedarse con una foto vieja (la lista no se auto-actualiza). *@
+        <button class="r5-btn r5-btn--fantasma" style="margin-left:auto" @onclick="CargarAsync" disabled="@_cargando">
+            @(_cargando ? "Actualizando…" : "Actualizar")
+        </button>
     </div>
 
     @if (_cargando)

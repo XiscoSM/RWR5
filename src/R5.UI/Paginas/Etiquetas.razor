@@ -15,8 +15,8 @@
     <div class="r5-tarjeta r5-columna">
         <div class="r5-fila" style="flex-wrap: wrap;">
             <div class="r5-segmento">
-                <button class="@(!_modoPda ? "activo" : "")" @onclick="() => _modoPda = false">Etiquetas del día</button>
-                <button class="@(_modoPda ? "activo" : "")" @onclick="() => _modoPda = true">Etiquetas PDA</button>
+                <button class="@(!_modoPda ? "activo" : "")" aria-pressed="@(!_modoPda)" @onclick="() => CambiarModo(false)">Etiquetas del día</button>
+                <button class="@(_modoPda ? "activo" : "")" aria-pressed="@_modoPda" @onclick="() => CambiarModo(true)">Etiquetas PDA</button>
             </div>
             <label class="r5-fila" style="gap: var(--esp-2); margin-left: auto; cursor: pointer;">
                 <input type="checkbox" style="width: 24px; height: 24px;" @bind="_automatico" />
@@ -66,6 +66,10 @@
         </div>
     }
 
+    @* La cola de reimpresión es un concepto del modo PDA (tabla de etiquetas del terminal);
+       en "Etiquetas del día" no aplica y no debe mostrarse. *@
+    @if (_modoPda)
+    {
     <div class="r5-tarjeta r5-columna">
         <div class="r5-fila">
             <h3>Cola del terminal @Sesion.Usuario?.NumTerminal</h3>
@@ -96,6 +100,7 @@
             </dl>
         }
     </div>
+    }
 </div>
 </GuardiaModulo>
 
@@ -112,6 +117,18 @@
     private List<Producto> _cola = new();
 
     protected override Task OnInitializedAsync() => CargarColaAsync();
+
+    // Cambiar de modo invalida el producto cargado: el PVP y la acción se resolvieron
+    // para el modo anterior. Se limpia y se pide re-escanear, evitando solicitar en el
+    // modo equivocado.
+    private void CambiarModo(bool pda)
+    {
+        if (_modoPda == pda) return;
+        _modoPda = pda;
+        _producto = null;
+        _eanActual = 0;
+        _aviso = "";
+    }
 
     // Option del proc Madisa: manual = consulta (0) y luego confirma (2 PDA / 4 día);
     // automático = directo (1 PDA / 3 día).

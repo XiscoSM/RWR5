@@ -143,13 +143,24 @@
 
         try
         {
-            var respuesta = await Ajustes.GetLineasAsync(NumAjuste, fecha);
-            if (!respuesta.Ok)
+            // Cabecera + líneas en paralelo. La cabecera del servidor manda sobre el ?reg=
+            // de la bandeja: el deep-link sin query también muestra estado y acción correctos.
+            var tCab = Ajustes.GetCabeceraAsync(NumAjuste, fecha);
+            var tLin = Ajustes.GetLineasAsync(NumAjuste, fecha);
+            await Task.WhenAll(tCab, tLin);
+
+            if (tCab.Result.Ok && tCab.Result.Datos is { NumAjuste: > 0 } cab)
             {
-                _error = respuesta.Error;
+                Reg = cab.Reg ? 1 : 0;
+                _registrado = cab.Reg;
+            }
+
+            if (!tLin.Result.Ok)
+            {
+                _error = tLin.Result.Error;
                 return;
             }
-            _lineas = respuesta.Datos ?? new();
+            _lineas = tLin.Result.Datos ?? new();
         }
         finally
         {

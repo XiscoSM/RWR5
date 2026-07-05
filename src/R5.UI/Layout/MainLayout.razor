@@ -10,7 +10,7 @@
     <header class="r5-barra">
         @if (Sesion.Autenticado && !_enInicio)
         {
-            <button class="r5-btn r5-btn--fantasma r5-barra__inicio" title="Ir a Inicio" @onclick='() => Nav.NavigateTo("/inicio")'>
+            <button class="r5-btn r5-btn--fantasma r5-barra__inicio" title="Ir a Inicio" aria-label="Ir a Inicio" @onclick='() => Nav.NavigateTo("/inicio")'>
                 <Icono Nombre="inicio" Clase="r5-barra__icono" />
             </button>
         }
@@ -37,7 +37,7 @@
                    tarea no debe echar al operario al login. *@
                 @if (!_confirmandoSalir)
                 {
-                    <button class="r5-btn r5-btn--fantasma r5-barra__salir" title="Cerrar sesión" @onclick="() => _confirmandoSalir = true">
+                    <button class="r5-btn r5-btn--fantasma r5-barra__salir" title="Cerrar sesión" aria-label="Cerrar sesión" @onclick="() => _confirmandoSalir = true">
                         <Icono Nombre="salir" Clase="r5-barra__icono" />
                     </button>
                 }

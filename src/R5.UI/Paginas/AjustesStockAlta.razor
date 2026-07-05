@@ -97,7 +97,7 @@
                 <input id="busquedaAjuste" class="r5-input" type="text" inputmode="numeric"
                        placeholder="Escanea un EAN o teclea el código de producto"
                        @bind="_codigo" @bind:event="oninput" disabled="@_ocupado" />
-                <button type="submit" class="r5-btn r5-btn--primario" disabled="@(_ocupado || string.IsNullOrWhiteSpace(_codigo))">
+                <button type="submit" class="r5-btn r5-btn--secundario" disabled="@(_ocupado || string.IsNullOrWhiteSpace(_codigo))">
                     Buscar
                 </button>
             </form>
@@ -139,6 +139,19 @@
                 </button>
             </div>
         }
+
+        <PanelLineas Items="_lineasDoc" Cargando="_cargandoLineas" Titulo="Líneas del ajuste">
+            <Cabecera>
+                <th>Cód.</th><th>Producto</th><th class="num">Cant.</th>
+            </Cabecera>
+            <Fila Context="l">
+                <tr @key="l.Linea">
+                    <td>@l.Prod.CodProd</td>
+                    <td>@l.Prod.DescProd</td>
+                    <td class="num">@Cantidad(l.Cant, l.Prod.DecimalesEnCant)</td>
+                </tr>
+            </Fila>
+        </PanelLineas>
     }
 </div>
 </GuardiaModulo>
@@ -174,6 +187,8 @@
     private decimal _cantidad;
     private int _numAjuste;
     private int _lineasAnadidas;
+    private List<AjusteLin> _lineasDoc = new();
+    private bool _cargandoLineas;
     private readonly DateTime _fecha = DateTime.Today;
 
     private decimal Importe => _linea is null ? 0 : Math.Round(_cantidad * _linea.PrecioCoste, 2);
@@ -295,6 +310,7 @@
             _aviso = $"{_linea.Prod.DescProd}: {Cantidad(_cantidad, _linea.Prod.DecimalesEnCant)} añadido al ajuste {_numAjuste}.";
             _linea = null;
             _codigo = "";
+            _ = RefrescarLineasAsync();
         }
         finally
         {
@@ -302,6 +318,17 @@
             StateHasChanged();
             await JS.InvokeVoidAsync("r5.seleccionar", "busquedaAjuste");
         }
+    }
+
+    // Refresca el panel de líneas sin bloquear el siguiente escaneo (ApiWeb no lanza).
+    private async Task RefrescarLineasAsync()
+    {
+        if (_numAjuste <= 0) return;
+        _cargandoLineas = true;
+        var r = await Ajustes.GetLineasAsync(_numAjuste, _fecha);
+        if (r.Ok && r.Datos is not null) _lineasDoc = r.Datos;
+        _cargandoLineas = false;
+        StateHasChanged();
     }
 
     // Registrar el ajuste: irreversible desde la app (mueve stock/coste en RW).

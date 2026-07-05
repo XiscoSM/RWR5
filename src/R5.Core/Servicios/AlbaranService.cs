@@ -14,8 +14,12 @@ public sealed class AlbaranService
     }
 
     /// <summary>GET Albaran/List/{codAlm}?codUsuario=&amp;registrado=&amp;top= — albaranes del usuario.</summary>
-    public Task<ApiRespuesta<List<Albaran>>> GetAlbaranesAsync(short codAlm, short codUsuario, bool registrado, short top = 50, CancellationToken ct = default)
+    public Task<ApiRespuesta<List<Albaran>>> GetAlbaranesAsync(short codAlm, short codUsuario, bool registrado, short top = 300, CancellationToken ct = default)
         => _api.GetAsync<List<Albaran>>($"Albaran/List/{codAlm}?codUsuario={codUsuario}&registrado={registrado}&top={top}", ct);
+
+    /// <summary>GET Albaran/{num}/{fecha} — cabecera del albarán (estado real Reg, proveedor, totales).</summary>
+    public Task<ApiRespuesta<Albaran>> GetCabeceraAsync(int numAlbaran, DateTime fecha, CancellationToken ct = default)
+        => _api.GetAsync<Albaran>($"Albaran/{numAlbaran}/{fecha:yyyy-MM-dd}", ct);
 
     /// <summary>GET Albaran/{num}/{fecha}/Lineas — detalle del albarán.</summary>
     public Task<ApiRespuesta<List<AlbaranLin>>> GetLineasAsync(int numAlbaran, DateTime fecha, short top = 200, CancellationToken ct = default)
