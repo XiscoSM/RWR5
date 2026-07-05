@@ -9,6 +9,7 @@
 @inject RepositorioConfiguracion RepoConfig
 @inject CredencialesApi Credenciales
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
 <div class="r5-login">
     <div class="r5-login__tarjeta">
@@ -39,7 +40,7 @@
                 <Aviso Mensaje="@_error" />
 
                 <button type="submit" class="r5-btn r5-btn--primario r5-btn--bloque"
-                        disabled="@(_validando || _codUsuario is null or <= 0 || _pwd is null)">
+                        disabled="@(_validando || !Credenciales.Enrolado || _codUsuario is null or <= 0 || _pwd is null)">
                     @(_validando ? "Validando…" : "Entrar")
                 </button>
             </div>
@@ -68,6 +69,13 @@
         if (Config.UltimoUsuario > 0) _codUsuario = Config.UltimoUsuario;
     }
 
+    // Con el usuario ya precargado, el foco va directo a la contraseña (el caso diario).
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && _codUsuario is > 0)
+            await JS.InvokeVoidAsync("r5.seleccionar", "pwd");
+    }
+
     private async Task EntrarAsync()
     {
         if (_validando || _codUsuario is null or <= 0 || _pwd is null) return;
@@ -79,12 +87,12 @@
             var respuesta = await Usuarios.LoginAsync(_codUsuario.Value, _pwd.Value);
             if (!respuesta.Ok || respuesta.Datos is null)
             {
-                _error = respuesta.Error;
+                await ErrorLoginAsync(respuesta.Error);
                 return;
             }
             if (respuesta.Datos.CodUsuario <= 0)
             {
-                _error = "Usuario o contraseña incorrectos.";
+                await ErrorLoginAsync("Usuario o contraseña incorrectos.");
                 return;
             }
 
@@ -100,5 +108,16 @@
         {
             _validando = false;
         }
+    }
+
+    // Tras un login fallido se limpia la contraseña y se devuelve el foco a ese campo:
+    // el operario reintenta sin borrar a mano ni tocar la pantalla.
+    private async Task ErrorLoginAsync(string mensaje)
+    {
+        _error = mensaje;
+        _pwd = null;
+        _validando = false;
+        StateHasChanged();
+        await JS.InvokeVoidAsync("r5.seleccionar", "pwd");
     }
 }
