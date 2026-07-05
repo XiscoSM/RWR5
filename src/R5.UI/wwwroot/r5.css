@@ -186,6 +186,7 @@ h3 { font-size: var(--texto-lg); }
     border: 2px solid var(--c-primario);
 }
 .r5-btn--peligro { background: var(--c-error); color: #fff; }
+.r5-btn--sm { min-height: 40px; padding: 0 var(--esp-4); font-size: var(--texto-sm); flex-shrink: 0; }
 .r5-btn--fantasma { background: transparent; color: var(--c-primario); }
 .r5-btn--bloque { width: 100%; }
 
@@ -220,7 +221,7 @@ h3 { font-size: var(--texto-lg); }
 /* ---------- Avisos ---------- */
 .r5-aviso {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     gap: var(--esp-3);
     padding: var(--esp-4);
     border-radius: var(--radio-sm);

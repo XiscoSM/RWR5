@@ -7,6 +7,13 @@
     <div class="r5-aviso r5-aviso--@Tipo" role="@(Tipo == "error" ? "alert" : "status")">
         <Icono Nombre="@_icono" Clase="r5-aviso__icono" />
         <span>@Mensaje</span>
+        @if (OnReintentar.HasDelegate)
+        {
+            <button class="r5-btn r5-btn--secundario r5-btn--sm" style="margin-left:auto"
+                    @onclick="OnReintentar" disabled="@Reintentando">
+                @(Reintentando ? "Reintentando…" : "Reintentar")
+            </button>
+        }
     </div>
 }
 
@@ -18,6 +25,12 @@
 
     /// <summary>Poner a false en avisos pasivos (p. ej. validación de formularios).</summary>
     [Parameter] public bool ConSonido { get; set; } = true;
+
+    /// <summary>Si se asigna, el aviso muestra un botón "Reintentar" (para errores de carga).</summary>
+    [Parameter] public EventCallback OnReintentar { get; set; }
+
+    /// <summary>Estado de la reejecución, para deshabilitar el botón mientras corre.</summary>
+    [Parameter] public bool Reintentando { get; set; }
 
     private string _ultimoSonado = "";
 

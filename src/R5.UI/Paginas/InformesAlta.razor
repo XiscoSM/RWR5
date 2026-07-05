@@ -32,9 +32,14 @@
     {
         <div class="r5-tarjeta r5-columna">
             <h3>Tipo de informe</h3>
-            @if (_tipos.Count == 0)
+            @if (_cargandoInicial)
             {
                 <Cargando Texto="Cargando tipos…" />
+            }
+            else if (_tipos.Count == 0)
+            {
+                <Aviso Mensaje="@(_aviso.Length > 0 ? _aviso : "No hay tipos de informe disponibles.")"
+                       OnReintentar="CargarTiposAsync" Reintentando="_cargandoInicial" />
             }
             else
             {
@@ -51,7 +56,6 @@
                     }
                 </div>
             }
-            <Aviso Mensaje="@(_tipoAviso == "error" ? _aviso : "")" />
         </div>
     }
     else
@@ -176,6 +180,7 @@
     private bool _ocupado;
     private bool _anadiendo;
     private bool _registrando;
+    private bool _cargandoInicial = true;
     private string _aviso = "";
     private string _tipoAviso = "error";
 
@@ -198,11 +203,22 @@
     private static string Etiqueta(string? desc, string porDefecto)
         => string.IsNullOrWhiteSpace(desc) ? porDefecto : desc;
 
-    protected override async Task OnInitializedAsync()
+    protected override Task OnInitializedAsync() => CargarTiposAsync();
+
+    private async Task CargarTiposAsync()
     {
-        var tipos = await Informes.GetTiposAsync();
-        if (!tipos.Ok) { MostrarError(tipos.Error); return; }
-        _tipos = tipos.Datos ?? new();
+        _cargandoInicial = true;
+        _aviso = "";
+        try
+        {
+            var tipos = await Informes.GetTiposAsync();
+            if (!tipos.Ok) { MostrarError(tipos.Error); return; }
+            _tipos = tipos.Datos ?? new();
+        }
+        finally
+        {
+            _cargandoInicial = false;
+        }
     }
 
     private void ElegirTipo(TipoInforme tipo)

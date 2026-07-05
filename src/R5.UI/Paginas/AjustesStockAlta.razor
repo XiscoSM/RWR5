@@ -31,9 +31,14 @@
     {
         <div class="r5-tarjeta r5-columna">
             <h3>Tipo de ajuste</h3>
-            @if (_tipos.Count == 0)
+            @if (_cargandoInicial)
             {
                 <Cargando Texto="Cargando tipos…" />
+            }
+            else if (_tipos.Count == 0)
+            {
+                <Aviso Mensaje="@(_aviso.Length > 0 ? _aviso : "No hay tipos de ajuste disponibles.")"
+                       OnReintentar="CargarInicialAsync" Reintentando="_cargandoInicial" />
             }
             else
             {
@@ -50,7 +55,6 @@
                     }
                 </div>
             }
-            <Aviso Mensaje="@(_tipoAviso == "error" ? _aviso : "")" />
         </div>
     }
     else
@@ -150,6 +154,7 @@
     private bool _ocupado;
     private bool _anadiendo;
     private bool _registrando;
+    private bool _cargandoInicial = true;
     private string _aviso = "";
     private string _tipoAviso = "error";
 
@@ -162,18 +167,33 @@
 
     private decimal Importe => _linea is null ? 0 : Math.Round(_cantidad * _linea.PrecioCoste, 2);
 
-    protected override async Task OnInitializedAsync()
+    protected override Task OnInitializedAsync() => CargarInicialAsync();
+
+    // Tipos y programas: si falla cualquiera, no se puede dar de alta (el proc exige un
+    // programa válido por FK), así que se bloquea con aviso y opción de reintentar en vez
+    // de dejar un spinner eterno o reventar al añadir la primera línea.
+    private async Task CargarInicialAsync()
     {
         _codAlmDest = Sesion.Usuario?.Almacen.CodAlm ?? 0;
+        _cargandoInicial = true;
+        _aviso = "";
+        try
+        {
+            var tareaTipos = Ajustes.GetTiposAsync();
+            var tareaProgramas = Ajustes.GetProgramasAsync();
+            await Task.WhenAll(tareaTipos, tareaProgramas);
 
-        var tareaTipos = Ajustes.GetTiposAsync();
-        var tareaProgramas = Ajustes.GetProgramasAsync();
-        await Task.WhenAll(tareaTipos, tareaProgramas);
+            if (!tareaTipos.Result.Ok) { MostrarError(tareaTipos.Result.Error); return; }
+            if (!tareaProgramas.Result.Ok) { MostrarError("No se pudieron cargar los programas: " + tareaProgramas.Result.Error); return; }
 
-        if (!tareaTipos.Result.Ok) { MostrarError(tareaTipos.Result.Error); return; }
-        _tipos = tareaTipos.Result.Datos ?? new();
-        _programas = tareaProgramas.Result.Datos ?? new();
-        if (_programas.Count > 0) _progDest = _programas[0].Prog;
+            _tipos = tareaTipos.Result.Datos ?? new();
+            _programas = tareaProgramas.Result.Datos ?? new();
+            if (_programas.Count > 0) _progDest = _programas[0].Prog;
+        }
+        finally
+        {
+            _cargandoInicial = false;
+        }
     }
 
     private void ElegirTipo(TipoAjuste tipo)

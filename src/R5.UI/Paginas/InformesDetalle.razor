@@ -153,23 +153,29 @@
 
         try
         {
-            // Cabecera (define columnas) y líneas en paralelo.
+            // Cabecera (define columnas), líneas y catálogo de tipos, los tres en paralelo.
             var tareaInforme = Informes.GetInformeAsync(NumInforme);
             var tareaLineas = Informes.GetLineasAsync(NumInforme);
-            await Task.WhenAll(tareaInforme, tareaLineas);
+            var tareaTipos = Informes.GetTiposAsync();
+            await Task.WhenAll(tareaInforme, tareaLineas, tareaTipos);
 
-            _tipo = tareaInforme.Result.Datos?.TipoInforme;
-            // La cabecera trae el tipo sin su configuración de campos: se completa del catálogo.
-            if (_tipo is not null)
-            {
-                var tipos = await Informes.GetTiposAsync();
-                _tipo = tipos.Datos?.FirstOrDefault(t => t.Tipo == _tipo.Tipo) ?? _tipo;
-            }
             if (!tareaLineas.Result.Ok)
             {
                 _error = tareaLineas.Result.Error;
                 return;
             }
+            // Si la cabecera falla, las columnas por-tipo no se pueden resolver: se avisa en
+            // vez de ocultar en silencio columnas que las líneas sí traen.
+            if (!tareaInforme.Result.Ok)
+            {
+                _error = "No se pudo cargar la definición del informe: " + tareaInforme.Result.Error;
+                return;
+            }
+            _tipo = tareaInforme.Result.Datos?.TipoInforme;
+            // La cabecera trae el tipo sin su configuración de campos: se completa del catálogo.
+            if (_tipo is not null)
+                _tipo = tareaTipos.Result.Datos?.FirstOrDefault(t => t.Tipo == _tipo.Tipo) ?? _tipo;
+
             _lineas = tareaLineas.Result.Datos ?? new();
         }
         finally

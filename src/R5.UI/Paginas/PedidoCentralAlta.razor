@@ -25,9 +25,15 @@
     <div class="r5-tarjeta r5-columna">
         <div class="r5-campo">
             <label>Centro de distribución</label>
-            @if (_centros.Count == 0)
+            @if (_cargandoCentros)
             {
                 <span class="r5-texto-suave">Cargando centros…</span>
+            }
+            else if (_centros.Count == 0)
+            {
+                @* Sin centros no se puede pedir (todas las búsquedas necesitan uno): se bloquea. *@
+                <Aviso Mensaje="@(_aviso.Length > 0 ? _aviso : "No se pudieron cargar los centros de distribución.")"
+                       OnReintentar="CargarCentrosAsync" Reintentando="_cargandoCentros" />
             }
             else
             {
@@ -35,7 +41,7 @@
                     @foreach (var centro in _centros)
                     {
                         <button @key="centro.CentroDist" class="@(_centroDist == centro.CentroDist ? "activo" : "")"
-                                @onclick="() => _centroDist = centro.CentroDist">
+                                @onclick="() => ElegirCentro(centro.CentroDist)">
                             @centro.DescCentroDist
                         </button>
                     }
@@ -46,8 +52,9 @@
         <form @onsubmit="BuscarAsync" class="r5-buscador">
             <input id="busquedaPedido" class="r5-input" type="text" inputmode="numeric"
                    placeholder="Escanea un EAN o teclea el código de producto"
-                   @bind="_codigo" @bind:event="oninput" autofocus disabled="@_ocupado" />
-            <button type="submit" class="r5-btn r5-btn--primario" disabled="@(_ocupado || string.IsNullOrWhiteSpace(_codigo))">
+                   @bind="_codigo" @bind:event="oninput" autofocus disabled="@(_ocupado || _centros.Count == 0)" />
+            <button type="submit" class="r5-btn r5-btn--primario"
+                    disabled="@(_ocupado || _centros.Count == 0 || string.IsNullOrWhiteSpace(_codigo))">
                 Buscar
             </button>
         </form>
@@ -106,6 +113,7 @@
     private string _codigo = "";
     private bool _ocupado;
     private bool _anadiendo;
+    private bool _cargandoCentros = true;
     private string _aviso = "";
     private string _tipoAviso = "error";
 
@@ -116,13 +124,37 @@
     private DateTime _ultimaFecha;
     private short _ultimoAlmCentral;
 
-    protected override async Task OnInitializedAsync()
+    protected override Task OnInitializedAsync() => CargarCentrosAsync();
+
+    private async Task CargarCentrosAsync()
     {
-        var centros = await Pedidos.GetCentrosDistAsync();
-        if (centros.Ok && centros.Datos is not null && centros.Datos.Count > 0)
+        _cargandoCentros = true;
+        _aviso = "";
+        try
         {
-            _centros = centros.Datos;
-            _centroDist = _centros[0].CentroDist;
+            var centros = await Pedidos.GetCentrosDistAsync();
+            if (!centros.Ok) { MostrarError(centros.Error); return; }
+            _centros = centros.Datos ?? new();
+            if (_centros.Count > 0) _centroDist = _centros[0].CentroDist;
+        }
+        finally
+        {
+            _cargandoCentros = false;
+        }
+    }
+
+    // Cambiar de centro invalida la ficha cargada: su stock central y el pedido destino
+    // se calcularon para el centro anterior. Se limpia y se pide re-escanear.
+    private void ElegirCentro(byte centro)
+    {
+        if (_centroDist == centro) return;
+        _centroDist = centro;
+        if (_linea is not null || _dto is not null)
+        {
+            _linea = null;
+            _dto = null;
+            _tipoAviso = "info";
+            _aviso = "Centro cambiado: vuelve a escanear el producto para recalcular el stock central.";
         }
     }
 

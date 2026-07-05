@@ -310,14 +310,25 @@
         _aviso = "";
     }
 
-    // Un catálogo vacío significa "sin permiso": el botón de ese tipo no se muestra.
+    // Un catálogo vacío significa "sin permiso": el botón de ese tipo no se muestra. Pero
+    // un fallo de red daría el mismo vacío y ocultaría botones a los que sí hay derecho:
+    // por eso si alguna llamada falla se avisa en vez de tragárselo en silencio.
     private async Task CargarCatalogosAsync()
     {
         if (_empleado is null) return;
         var tareas = _tiposSolicitud.Select(t => ServicioGestiones.GetCatalogoAsync(t.Item1, _empleado.Empleado)).ToArray();
         await Task.WhenAll(tareas);
+        bool algunFallo = false;
         for (int i = 0; i < _tiposSolicitud.Length; i++)
+        {
+            if (!tareas[i].Result.Ok) algunFallo = true;
             _catalogos[_tiposSolicitud[i].Item1] = tareas[i].Result.Datos ?? new();
+        }
+        if (algunFallo)
+        {
+            _tipoAviso = "error";
+            _aviso = "No se pudieron cargar las solicitudes disponibles; puede que falten botones. Vuelve a identificarte para reintentar.";
+        }
     }
 
     private void AbrirSolicitud(byte tipo)
