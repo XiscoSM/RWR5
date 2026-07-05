@@ -279,13 +279,23 @@
                 Sesion.Usuario!.Almacen.RegistroSanitario ?? "");
             if (!respuesta.Ok || respuesta.Datos is null) { MostrarError(respuesta.Error); return; }
 
-            await Visor.AbrirAsync($"EtiqEnvasado_{_seleccionado.Prod}_{_lote.Lote}.pdf", respuesta.Datos);
-
+            // La etiqueta ya está generada: se contabiliza antes de abrir el visor, para que
+            // un fallo del visor no haga perder la cuenta ni parezca que no se generó.
             _etiquetasSesion++;
             _pesoAcumulado += _peso;
-            _tipoAviso = "exito";
-            _aviso = $"Etiqueta de {Cantidad(_peso, true)} kg generada ({Moneda(Math.Round(_peso * _seleccionado.Pvp, 2))}).";
+            decimal pesoEtiqueta = _peso;
             _peso = 0;
+
+            try
+            {
+                await Visor.AbrirAsync($"EtiqEnvasado_{_seleccionado.Prod}_{_lote.Lote}.pdf", respuesta.Datos);
+                _tipoAviso = "exito";
+                _aviso = $"Etiqueta de {Cantidad(pesoEtiqueta, true)} kg generada ({Moneda(Math.Round(pesoEtiqueta * _seleccionado.Pvp, 2))}).";
+            }
+            catch (Exception ex)
+            {
+                MostrarError("Etiqueta generada, pero no se pudo abrir el PDF para imprimir: " + ex.Message);
+            }
         }
         finally
         {

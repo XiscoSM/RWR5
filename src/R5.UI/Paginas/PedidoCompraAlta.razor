@@ -142,6 +142,17 @@
     private bool _ocupado;
     private bool _anadiendo;
     private bool _registrando;
+    private bool _enfocarBuscador;
+
+    // Foco al buscador de producto en cuanto aparece (tras elegir la gama).
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_enfocarBuscador)
+        {
+            _enfocarBuscador = false;
+            await JS.InvokeVoidAsync("r5.seleccionar", "busquedaPedProv");
+        }
+    }
     private string _aviso = "";
     private string _tipoAviso = "error";
 
@@ -198,6 +209,7 @@
     {
         _gamaElegida = gama;
         _aviso = "";
+        _enfocarBuscador = true;
     }
 
     private void CambiarProveedor()

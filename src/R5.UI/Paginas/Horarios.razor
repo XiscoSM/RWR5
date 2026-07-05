@@ -153,6 +153,10 @@
             if (!respuesta.Ok || respuesta.Datos is null) { _aviso = respuesta.Error; return; }
             await Visor.AbrirAsync($"Horarios_{_seccion}.pdf", respuesta.Datos);
         }
+        catch (Exception ex)
+        {
+            _aviso = "No se pudo abrir el PDF: " + ex.Message;
+        }
         finally
         {
             _generandoPdf = false;

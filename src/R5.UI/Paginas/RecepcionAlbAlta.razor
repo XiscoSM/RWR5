@@ -177,8 +177,20 @@
     private bool _ocupado;
     private bool _anadiendo;
     private bool _registrando;
+    private bool _enfocarAlbaran;
     private string _aviso = "";
     private string _tipoAviso = "error";
+
+    // Foco al campo de nº de albarán en cuanto aparece (tras elegir gama): el operario
+    // debe teclearlo antes de escanear productos.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_enfocarAlbaran)
+        {
+            _enfocarAlbaran = false;
+            await JS.InvokeVoidAsync("r5.seleccionar", "numAlbProv");
+        }
+    }
 
     private AlbaranLin? _linea;
     private long _eanEscaneado;
@@ -232,6 +244,7 @@
     {
         _gamaElegida = gama;
         _aviso = "";
+        _enfocarAlbaran = true; // el siguiente paso es teclear el nº de albarán del proveedor
     }
 
     private void CambiarProveedor()
@@ -256,6 +269,16 @@
     {
         string codigo = _codigo.Trim();
         if (_ocupado || codigo.Length == 0 || _gamaElegida is null || !Sesion.Autenticado) return;
+
+        // Sin nº de albarán del proveedor no se puede recepcionar: avisar (con sonido) en vez
+        // de que el Enter del escáner no haga nada de forma silenciosa.
+        if (string.IsNullOrWhiteSpace(_numAlbProv))
+        {
+            MostrarError("Introduce primero el nº de albarán del proveedor.");
+            _codigo = "";
+            _enfocarAlbaran = true;
+            return;
+        }
 
         _ocupado = true;
         _aviso = "";

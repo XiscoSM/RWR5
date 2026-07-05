@@ -33,9 +33,19 @@
                     <Icono Nombre="usuario" Clase="r5-barra__icono" />
                     @Sesion.Usuario.DescUsuario
                 </span>
-                <button class="r5-btn r5-btn--fantasma r5-barra__salir" title="Cerrar sesión" @onclick="CerrarSesion">
-                    <Icono Nombre="salir" Clase="r5-barra__icono" />
-                </button>
+                @* Cerrar sesión en dos pasos: un toque errado con guantes en mitad de una
+                   tarea no debe echar al operario al login. *@
+                @if (!_confirmandoSalir)
+                {
+                    <button class="r5-btn r5-btn--fantasma r5-barra__salir" title="Cerrar sesión" @onclick="() => _confirmandoSalir = true">
+                        <Icono Nombre="salir" Clase="r5-barra__icono" />
+                    </button>
+                }
+                else
+                {
+                    <button class="r5-btn r5-btn--peligro r5-btn--sm" @onclick="CerrarSesion">Salir</button>
+                    <button class="r5-btn r5-btn--fantasma r5-btn--sm" @onclick="() => _confirmandoSalir = false">Cancelar</button>
+                }
             }
         </div>
     </header>
@@ -54,6 +64,7 @@
     private bool _hayInternet = true;
     private string _titulo = "RW R5";
     private bool _enInicio = true;
+    private bool _confirmandoSalir;
 
     protected override void OnInitialized()
     {
@@ -108,6 +119,7 @@
 
     private void AlNavegar(object? s, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
     {
+        _confirmandoSalir = false; // no arrastrar la confirmación de salida entre pantallas
         ActualizarTitulo();
         ExigirSesion();
         InvokeAsync(StateHasChanged);

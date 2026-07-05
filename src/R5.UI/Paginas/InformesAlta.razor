@@ -181,6 +181,17 @@
     private bool _anadiendo;
     private bool _registrando;
     private bool _cargandoInicial = true;
+    private bool _enfocarBuscador;
+
+    // Foco al buscador en cuanto aparece (tras elegir el tipo de informe).
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_enfocarBuscador)
+        {
+            _enfocarBuscador = false;
+            await JS.InvokeVoidAsync("r5.seleccionar", "busquedaInforme");
+        }
+    }
     private string _aviso = "";
     private string _tipoAviso = "error";
 
@@ -225,6 +236,7 @@
     {
         _tipoElegido = tipo;
         _aviso = "";
+        _enfocarBuscador = true;
     }
 
     private void CambiarTipo()
