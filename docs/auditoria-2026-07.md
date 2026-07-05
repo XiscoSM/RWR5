@@ -20,18 +20,21 @@ priorizado.
 | 10 | Doble toque en segmentos de bandeja → cargas solapadas y lista del filtro equivocado | Segmentos deshabilitados durante la carga (9 pantallas) |
 | 11 | Picking: el foco no volvía al escáner al cambiar de línea | `r5.seleccionar` tras cargar cada línea |
 
-## P1 — siguiente tanda recomendada
+## P1 — aplicados (commits `5a2f3b8`…`c202d63`, lotes A–F)
+
+Hecho y verificado en la app:
+- **Errores de carga dejan de disfrazarse de "sin datos"**: componente `Aviso` con botón *Reintentar* (`OnReintentar`); FichaProducto (EANs y stock de tiendas distinguen fallo de vacío), Gestiones (catálogos), AjustesStockAlta/InformesAlta (spinner de tipos ya no eterno + AjustesStock bloquea si fallan los programas), PedidoCentralAlta (centros con reintentar), InformesDetalle (fallo de cabecera avisa en vez de ocultar columnas).
+- **Datos**: cajas coherentes con la cantidad al grabar (recepción, compra, picking); cambiar de centro en PedidoCentralAlta invalida la ficha cargada.
+- **UX**: foco del escáner tras elegir tipo/gama (4 altas) y a la contraseña en Login; RecepcionAlbAlta ya no falla en silencio sin nº de albarán; logout en dos pasos; `Visor.AbrirAsync` con try/catch (Horarios, Envasado); Login limpia pwd tras error y deshabilita Entrar sin enrolar.
+- **Formato/responsive**: barrido de fechas de display a `Formato.Fecha` (oculta 01/01/1900); tablas con scroll horizontal (`.r5-tabla-scroll`); barra superior no desborda <720px.
+
+## P1 — pendiente (requiere API o decisión de producto)
 
 **Funcional / datos**
-- Errores de red disfrazados de "lista vacía" (patrón `Datos ?? new()` sin mirar `Ok`): FichaProducto (EANs y stock tiendas — se decide traspaso con dato falso), Gestiones (catálogos → un fallo de red parece falta de permiso). Corregido ya en Etiquetas; replicar.
-- AjustesStockAlta: fallo de `GetProgramasAsync` ignorado → FK -1 al proc con error críptico; spinner infinito si falla `GetTiposAsync` (mismo en InformesAlta).
-- PedidoCentralAlta: fallo de centros → "Cargando centros…" eterno y búsquedas con centro 1 silencioso; cambiar de centro con ficha cargada no recalcula el DTO (stock/alta del centro viejo).
-- PedidoCentralDetalle: estado desde query sin verificar contra servidor (deep-link sin query pierde botón/badge; PDF con `_estado ?? 1`). Ideal: endpoint de cabecera (aplica también a RecepcionAlb/PedidoCompra detalles: `Reg`, proveedor, importes).
-- Picking: editar cantidad a mano no recalcula cajas (graba pares incoherentes; mismo defecto en RecepcionAlbAlta y PedidoCompraAlta); "total" del aviso de conteo calculado en cliente miente con varios terminales.
+- Detalles sin cabecera del servidor (necesita endpoint aditivo en WebApiRW): PedidoCentral/PedidoCompra/RecepcionAlb dependen del estado que les pasa la bandeja (`?reg=`, ya mitigado); lo robusto es cargar la cabecera real (`Reg`, proveedor, importes) y no fiarse del query. Deep-link sin query pierde botón/badge.
+- "Total" del aviso de conteo calculado en cliente: con varios terminales contando, miente. Usar el total que devuelva el proc o etiquetar "de este terminal".
 - InventariosConteo: conteo aditivo sin "corregir último" (el tope de sanidad ya evita lo catastrófico).
-- Bandejas Recepción/PedidoCompra: `top=50` del servidor trunca en silencio; `top=200` en líneas de albarán ídem.
-- InformesDetalle: `Ok` de cabecera sin comprobar → columnas ocultas en silencio.
-- Login: precarga usuario pero foco en usuario (cada mañana un toque de más); tras error no limpia pwd; Entrar habilitado sin enrolar.
+- Bandejas Recepción/PedidoCompra: `top=50` del servidor trunca en silencio; `top=200` en líneas de albarán ídem. Subir el límite o filtrar/avisar.
 
 **Completitud (usable de extremo a extremo)**
 - Altas sin lista de líneas añadidas ni borrar/corregir línea (las 4 altas + pedido central): un error de cantidad hoy no tiene corrección en la app.
@@ -42,15 +45,9 @@ priorizado.
 - Gestiones: firma sin poder ver el documento; identificación sin PIN (decisión de negocio a confirmar).
 - InventariosDetalle: solo conteos del terminal propio — el doble conteo entre terminales (el caso real) es invisible.
 
-**UX / consistencia**
-- Foco inicial del escáner es lotería (autofocus no fiable en WebView): enfocar al mostrar cada buscador (`ElegirGama`/`ElegirTipo`/form de link).
-- RecepcionAlbAlta: escaneo sin nº albarán proveedor falla en silencio; `_numAlbProv` incorregible tras la primera línea.
-- Ningún error de carga ofrece "Reintentar" (añadir `OnReintentar` opcional al componente Aviso).
-- `Formato.Fecha()` no se usa: 21 `ToString("dd/MM/yyyy")` a mano y centinelas 01/01/1900 visibles.
-- Responsive: tablas sin `overflow-x` (InformesDetalle 9 columnas rompe en vertical); barra superior sin plan <750px (colapsar chips a iconos).
-- Cerrar sesión a un toque sin confirmación, pegado al chip de usuario.
-- Horarios/Envasado: `Visor.AbrirAsync` sin try/catch (Traspasos/PedidoCentral sí lo tienen).
-- Horarios vista "Actual" no muestra de qué semana es el cuadro.
+**UX / consistencia (restante)**
+- RecepcionAlbAlta / PedidoCompraAlta: el nº de albarán / proveedor queda incorregible tras la primera línea (`disabled` cuando ya hay documento). Permitir editar con confirmación.
+- Horarios vista "Actual" no muestra de qué semana es el cuadro (necesita el rango de fechas de la API).
 
 ## P2 — pulido (selección)
 
