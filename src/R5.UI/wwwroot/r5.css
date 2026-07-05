@@ -107,6 +107,7 @@ h3 { font-size: var(--texto-lg); }
     display: flex;
     align-items: center;
     gap: var(--esp-3);
+    min-width: 0; /* permite que los chips encojan en vez de desbordar la barra */
 }
 
 .r5-chip {
@@ -122,6 +123,20 @@ h3 { font-size: var(--texto-lg); }
 }
 
 .r5-barra__icono { width: 20px; height: 20px; }
+
+/* Pantalla estrecha (móvil / tablet en vertical apretada): la barra no debe desbordar.
+   El título cede espacio y los chips de almacén/usuario truncan su texto con puntos
+   suspensivos en vez de empujar los botones fuera de la pantalla. */
+@media (max-width: 720px) {
+    .r5-barra { padding: 0 var(--esp-3); gap: var(--esp-2); }
+    .r5-barra__titulo { font-size: var(--texto-lg); flex-shrink: 1; }
+    .r5-barra__derecha { gap: var(--esp-2); }
+    .r5-barra__derecha .r5-chip {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 30vw;
+    }
+}
 
 .r5-barra__salir,
 .r5-barra__inicio {
@@ -452,6 +467,12 @@ h3 { font-size: var(--texto-lg); }
 
 /* ---------- Tabla ---------- */
 .r5-tabla { width: 100%; border-collapse: collapse; font-size: var(--texto-md); }
+
+/* Tabla ancha (muchas columnas) en pantalla estrecha: scroll horizontal propio,
+   sin desbordar la tarjeta ni la página. El padding de la tarjeta se anula porque
+   el scroll lo gestiona el contenedor. */
+.r5-tabla-scroll { overflow-x: auto; }
+.r5-tabla-scroll .r5-tabla { min-width: max-content; }
 
 .r5-tabla th {
     text-align: left;

@@ -137,20 +137,22 @@
                 }
                 else
                 {
-                    <table class="r5-tabla mt-2">
-                        <thead>
-                            <tr><th>Almacén</th><th class="num">Stock</th></tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var linea in _stockAlmacenes)
-                            {
-                                <tr @key="linea.CodAlm" class="@(linea.CodAlm == Sesion.Usuario!.Almacen.CodAlm ? "destacada" : "")">
-                                    <td>@linea.CodAlm · @linea.DescAlm</td>
-                                    <td class="num">@Cantidad(linea.Stock, _producto.DecimalesEnCant)</td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
+                    <div class="r5-tabla-scroll mt-2">
+                        <table class="r5-tabla">
+                            <thead>
+                                <tr><th>Almacén</th><th class="num">Stock</th></tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var linea in _stockAlmacenes)
+                                {
+                                    <tr @key="linea.CodAlm" class="@(linea.CodAlm == Sesion.Usuario!.Almacen.CodAlm ? "destacada" : "")">
+                                        <td>@linea.CodAlm · @linea.DescAlm</td>
+                                        <td class="num">@Cantidad(linea.Stock, _producto.DecimalesEnCant)</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
                 }
             </div>
 
