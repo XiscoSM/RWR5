@@ -306,6 +306,10 @@
         // no puede acabar grabada como unidades.
         if (_cantidad >= 10000) { MostrarError($"Cantidad {_cantidad} no valida: ¿has escaneado un codigo en el campo de cantidad?"); return; }
 
+        // Cajas coherentes con la cantidad final: si se editó la cantidad a mano, _cajas
+        // se quedó con el valor anterior. Se deriva de la cantidad (misma regla que el resto).
+        _cajas = (short)Math.Ceiling(_cantidad / UnidsCaja);
+
         _anadiendo = true;
         _aviso = "";
         try
