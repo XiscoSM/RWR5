@@ -38,7 +38,7 @@ Hecho y compilado (0 err/0 warn, 16 tests verdes); verificación interactiva de 
 ## P1 — pendiente (requiere API/proc nuevo o decisión de producto)
 
 **Funcional / datos**
-- Cabecera de **PedidoCentral** y **Traspasos**: no existe proc de cabecera por número (los otros 4 sí). Siguen con `?reg=`. Requiere `PROC_…Cab_Select` nuevo.
+- Cabecera de **PedidoCentral** y **Traspasos**: **CERRADO — no se hace (decisión 06/07)**. Los procs sí existen (`PROC_PedidoCentralCab_Pedido_Select`, `PROC_MovTraspasoCab_Select`, verificado en R3), pero exponerlos sería un endpoint nuevo que devuelve lo mismo que ya viaja en `List/{codAlm}` (de donde la bandeja saca el `?reg=`/`?estado=`), y las fichas solo se abren desde la bandeja — el deep-link sin query no ocurre en ningún flujo real. Ampliar los endpoints existentes rompería R4. Se mantiene el `?reg=`/`?estado=` actual.
 - "Total" del conteo global multi-terminal: el panel por-terminal ya da visibilidad honesta ("este terminal"); el total real entre terminales necesita endpoint/proc.
 - InventariosConteo: conteo aditivo sin "corregir último" (el tope de sanidad ya evita lo catastrófico).
 - Bandeja **PedidoCompra**: el `top=50` lo impone el servidor sin parámetro; subirlo necesita que la API acepte `top`.
