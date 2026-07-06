@@ -97,6 +97,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<EnvasadoService>();
         builder.Services.AddSingleton<DespieceService>();
         builder.Services.AddSingleton<ElaboracionService>();
+        builder.Services.AddSingleton<IfaService>();
         builder.Services.AddSingleton<IVisorArchivos, VisorArchivosMaui>();
 
         // ---- Hardware ----

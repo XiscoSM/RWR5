@@ -1,0 +1,189 @@
+@* IFA Central de Compras (módulo 35 de R3) — fase 1: SOLO CONSULTAS.
+   Pedidos: líneas en IFA desde una fecha, agrupadas por nº de pedido.
+   Recepciones: líneas recibidas en un rango, con totales por pedido.
+   (Los envíos de carga/mantenimiento de R3 quedan para una fase 2.) *@
+@page "/ifa"
+@inject IfaService ServicioIfa
+@inject SesionUsuario Sesion
+
+<GuardiaModulo CodMenu="35">
+<div class="r5-columna">
+
+    <div class="r5-fila">
+        <div class="r5-segmento">
+            <button class="@(!_verRecepciones ? "activo" : "")" aria-pressed="@(!_verRecepciones)" @onclick="() => CambiarVista(false)" disabled="@_cargando">Pedidos</button>
+            <button class="@(_verRecepciones ? "activo" : "")" aria-pressed="@_verRecepciones" @onclick="() => CambiarVista(true)" disabled="@_cargando">Recepciones</button>
+        </div>
+    </div>
+
+    <div class="r5-tarjeta r5-columna">
+        <div class="r5-fila" style="flex-wrap: wrap; align-items: flex-end;">
+            <div class="r5-campo" style="min-width: 190px;">
+                <label for="ifaDesde">@(_verRecepciones ? "Recepción desde" : "Pedido desde")</label>
+                <input id="ifaDesde" class="r5-input" type="date" @bind="_fechaDesde" disabled="@_cargando" />
+            </div>
+            @if (_verRecepciones)
+            {
+                <div class="r5-campo" style="min-width: 190px;">
+                    <label for="ifaHasta">Hasta</label>
+                    <input id="ifaHasta" class="r5-input" type="date" @bind="_fechaHasta" disabled="@_cargando" />
+                </div>
+            }
+            <button class="r5-btn r5-btn--primario" @onclick="ConsultarAsync" disabled="@_cargando">
+                @(_cargando ? "Consultando…" : "Consultar en IFA")
+            </button>
+        </div>
+        <span class="r5-texto-suave r5-texto-sm">Consulta de solo lectura contra la API de la central de compras IFA.</span>
+    </div>
+
+    <Aviso Tipo="@_tipoAviso" Mensaje="@_aviso" />
+
+    @if (_cargando)
+    {
+        <Cargando Texto="Consultando en IFA…" />
+    }
+    else if (!_verRecepciones && _pedidosAgrupados.Count > 0)
+    {
+        <div class="r5-tarjeta r5-columna">
+            <div class="r5-fila" style="align-items:baseline">
+                <h3 style="margin:0">Pedidos en IFA</h3>
+                <span class="r5-chip r5-chip--suave">@_pedidosAgrupados.Count pedidos · @_totalLineasPedidos líneas</span>
+            </div>
+            <div class="r5-tabla-scroll">
+                <table class="r5-tabla">
+                    <thead><tr><th>Pedido</th><th>Fecha</th><th>Proveedor</th><th>Destino</th><th class="num">Líneas</th><th class="num">Cantidad</th></tr></thead>
+                    <tbody>
+                        @foreach (var grupo in _pedidosAgrupados)
+                        {
+                            <tr @key="grupo.Pedido">
+                                <td>@grupo.Pedido</td>
+                                <td>@grupo.Fecha</td>
+                                <td>@grupo.Proveedor</td>
+                                <td>@grupo.Destino</td>
+                                <td class="num">@grupo.Lineas</td>
+                                <td class="num">@grupo.Cantidad</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+    else if (_verRecepciones && _recepcionesAgrupadas.Count > 0)
+    {
+        <div class="r5-tarjeta r5-columna">
+            <div class="r5-fila" style="align-items:baseline">
+                <h3 style="margin:0">Recepciones en IFA</h3>
+                <span class="r5-chip r5-chip--suave">@_recepcionesAgrupadas.Count recepciones · @_totalLineasRecepciones líneas · @_totalCantidadRecibida uds</span>
+            </div>
+            <div class="r5-tabla-scroll">
+                <table class="r5-tabla">
+                    <thead><tr><th>Pedido</th><th>Fecha recepción</th><th>Proveedor</th><th>Destino</th><th class="num">Líneas</th><th class="num">Cant. recibida</th></tr></thead>
+                    <tbody>
+                        @foreach (var grupo in _recepcionesAgrupadas)
+                        {
+                            <tr @key="grupo.Pedido">
+                                <td>@grupo.Pedido</td>
+                                <td>@grupo.Fecha</td>
+                                <td>@grupo.Proveedor</td>
+                                <td>@grupo.Destino</td>
+                                <td class="num">@grupo.Lineas</td>
+                                <td class="num">@grupo.Cantidad</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+    else if (_consultado)
+    {
+        <div class="r5-cargando">
+            <Icono Nombre="ifa" Clase="r5-modulo__icono" />
+            <span>Sin resultados en IFA para ese periodo.</span>
+        </div>
+    }
+</div>
+</GuardiaModulo>
+
+@code {
+    private bool _verRecepciones;
+    private bool _cargando;
+    private bool _consultado;
+    private string _aviso = "";
+    private string _tipoAviso = "error";
+
+    private DateTime _fechaDesde = DateTime.Today.AddDays(-2);
+    private DateTime _fechaHasta = DateTime.Today;
+
+    private sealed record GrupoIfa(string Pedido, string Fecha, string Proveedor, string Destino, int Lineas, double Cantidad);
+
+    private List<GrupoIfa> _pedidosAgrupados = new();
+    private List<GrupoIfa> _recepcionesAgrupadas = new();
+    private int _totalLineasPedidos;
+    private int _totalLineasRecepciones;
+    private double _totalCantidadRecibida;
+
+    private void CambiarVista(bool recepciones)
+    {
+        if (_verRecepciones == recepciones) return;
+        _verRecepciones = recepciones;
+        _aviso = "";
+        _consultado = false;
+    }
+
+    private async Task ConsultarAsync()
+    {
+        if (_cargando) return;
+        if (_verRecepciones && _fechaDesde > _fechaHasta)
+        {
+            MostrarError("La fecha de inicio no puede ser posterior a la de fin.");
+            return;
+        }
+
+        _cargando = true;
+        _aviso = "";
+        _consultado = false;
+        try
+        {
+            if (!_verRecepciones)
+            {
+                var respuesta = await ServicioIfa.GetPedidosAsync(_fechaDesde);
+                if (!respuesta.Ok) { MostrarError(respuesta.Error); return; }
+
+                var lineas = respuesta.Datos ?? new();
+                _totalLineasPedidos = lineas.Count;
+                _pedidosAgrupados = lineas
+                    .GroupBy(l => l.Pedido)
+                    .Select(g => new GrupoIfa(g.Key, g.First().FechaPedido, g.First().Proveedor,
+                        g.First().PuntoDestino, g.Count(), Math.Round(g.Sum(l => l.Cantidad), 2)))
+                    .ToList();
+            }
+            else
+            {
+                var respuesta = await ServicioIfa.GetRecepcionesAsync(_fechaDesde, _fechaHasta);
+                if (!respuesta.Ok) { MostrarError(respuesta.Error); return; }
+
+                var lineas = respuesta.Datos ?? new();
+                _totalLineasRecepciones = lineas.Count;
+                _totalCantidadRecibida = Math.Round(lineas.Sum(l => l.CantidadRecibida), 2);
+                _recepcionesAgrupadas = lineas
+                    .GroupBy(l => l.Pedido)
+                    .Select(g => new GrupoIfa(g.Key, g.First().FechaRecepcion, g.First().Proveedor,
+                        g.First().PuntoDestino, g.Count(), Math.Round(g.Sum(l => l.CantidadRecibida), 2)))
+                    .ToList();
+            }
+            _consultado = true;
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private void MostrarError(string mensaje)
+    {
+        _tipoAviso = "error";
+        _aviso = mensaje;
+    }
+}

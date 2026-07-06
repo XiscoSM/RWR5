@@ -38,6 +38,7 @@ public static class CatalogoModulos
         // Sistema (gris)
         [6] = new(6, "Cambio almacén", "/cambioAlmacen", "almacen", true, "slate", 50),
         [34] = new(34, "Gestiones", "/gestiones", "gestiones", true, "slate", 51),
+        [35] = new(35, "IFA Central", "/ifa", "ifa", true, "slate", 52),
     };
 
     /// <summary>Cruza los menús con permiso del usuario con el catálogo de R5.</summary>
