@@ -45,7 +45,7 @@ Hecho y compilado (0 err/0 warn, 16 tests verdes); verificación interactiva de 
 
 **Completitud (usable de extremo a extremo)**
 - Borrar/anular una línea desde las altas: hoy solo se corrige re-escaneando (sobrescribe). El borrado real necesita endpoint DELETE de línea + proc.
-- Recepción contra pedido de compra: `NumPedido=0` hardcodeado aunque API y proc ya lo soportan — falta el flujo de UI (elegir el pedido pendiente) y decidir cómo se elige.
+- ~~Recepción contra pedido de compra~~ **HECHO (client-side)**: en RecepcionAlbAlta se elige el pedido (tecleando el nº o de la lista de pendientes del proveedor) y se confirma viendo sus productos; el `NumPedido` viaja al Get de producto (precarga cantidad pedida) y a la línea. La API/proc ya lo soportaban.
 - PedidoCentralDetalle de pedido abierto: sin editar/borrar líneas.
 - PreparacionDetalle: no se puede revisar el contenido del pool sin asignárselo; asignación puede "robar" trabajo sin confirmación.
 - CambioAlmacen: exige saberse el número de memoria (sin lista de almacenes permitidos).
@@ -66,13 +66,13 @@ Hecho y compilado (0 err/0 warn, 16 tests verdes); verificación interactiva de 
 - **Login**: redirige a /inicio si ya hay sesión (evita re-loguear con el botón atrás).
 - **FichaProducto**: sonido de éxito al identificar por escaneo.
 - **Preparación**: botón "Actualizar" (el pool cambia según trabajan otros; la lista no se auto-refresca).
+- **`type="number"` → `type="text" inputmode="numeric"` en los campos ENTEROS** (cajas, nº almacén, terminal/puerto/idHard, empleado, usuario): quita spinners y "e" en el WebView. Los decimales (cantidad/peso/precio) se dejan como `number` por el riesgo de coma es-ES.
+- **Guard sin conexión centralizado en `BotonConfirmar`**: deshabilita el registro irreversible y avisa cuando no hay red — cubre todos los Registrar/Vaciar/Enviar en un solo componente (reacciona a `IEstadoRed`).
+- **Filtro por proveedor en la bandeja de recepción** (en memoria: nombre, código o nº de albarán del proveedor).
 
 ## P2 — deferido (con motivo)
 
-- Inputs `type="number"` → `type="text" + inputmode`: **riesgo de locale** (coma vs punto decimal al parsear `@bind` en cultura es-ES). Necesita decidir el manejo de decimales antes de tocar los campos de cantidad; se deja como está para no romper la captura.
-- MainLayout: título por switch → CascadingValue. Cosmético; el switch basta hasta que crezca el catálogo.
-- Banner sin conexión deshabilitando submits: hoy los envíos sin red ya fallan con mensaje y el banner avisa; deshabilitar cada submit es transversal (inyectar `IEstadoRed` en todas las páginas) — pendiente si se quiere el refuerzo.
-- Filtro por proveedor en recepción: necesita infra de filtro (y probablemente parámetro en la API).
+- MainLayout: título por switch → CascadingValue. **Recomendado NO hacer**: el switch central ya renderiza todos los títulos; el refactor sería churn en ~30 ficheros (o dos fuentes de verdad) sin cambio visible. Solo merece la pena si se quiere título dinámico por página (p. ej. mostrar el nº de documento en la barra).
 
 ## Justificación de posiciones (área 4 del encargo)
 
