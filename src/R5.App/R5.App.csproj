@@ -31,6 +31,12 @@
         <TargetPlatformMinVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</TargetPlatformMinVersion>
     </PropertyGroup>
 
+    <!-- Icono embebido en el .exe (barra de tareas, explorador, barra de título) para la app
+         de escritorio sin empaquetar; si no, Windows muestra el icono morado por defecto de .NET. -->
+    <PropertyGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">
+        <ApplicationIcon>Platforms\Windows\appicon.ico</ApplicationIcon>
+    </PropertyGroup>
+
     <ItemGroup>
         <!-- App Icon -->
         <MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#0E4D64" />

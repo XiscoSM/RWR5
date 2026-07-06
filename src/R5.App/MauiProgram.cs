@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Microsoft.Maui.LifecycleEvents;
 using R5.App.Servicios;
 using R5.Core.Api;
 using R5.Core.Config;
@@ -21,6 +22,23 @@ public static class MauiProgram
             });
 
         builder.Services.AddMauiBlazorWebView();
+
+#if WINDOWS
+        // App de escritorio sin empaquetar: el icono de la ventana y la barra de tareas
+        // no se toma solo del MauiIcon; se asigna a la ventana en su creación desde el
+        // appicon.ico generado (si no, sale el icono morado por defecto de .NET).
+        builder.ConfigureLifecycleEvents(events =>
+        {
+            events.AddWindows(windows => windows.OnWindowCreated(window =>
+            {
+                var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
+                var id = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
+                var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(id);
+                string ico = Path.Combine(AppContext.BaseDirectory, "appicon.ico");
+                if (File.Exists(ico)) appWindow.SetIcon(ico);
+            }));
+        });
+#endif
 
 #if DEBUG
         builder.Services.AddBlazorWebViewDeveloperTools();

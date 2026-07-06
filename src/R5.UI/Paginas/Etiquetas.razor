@@ -118,6 +118,12 @@
 
     protected override Task OnInitializedAsync() => CargarColaAsync();
 
+    // Foco directo al escáner al entrar (el autofocus de Blazor no dispara al navegar).
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender) await JS.InvokeVoidAsync("r5.seleccionar", "busquedaEtiqueta");
+    }
+
     // Cambiar de modo invalida el producto cargado: el PVP y la acción se resolvieron
     // para el modo anterior. Se limpia y se pide re-escanear, evitando solicitar en el
     // modo equivocado.

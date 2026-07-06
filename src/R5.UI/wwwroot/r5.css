@@ -286,52 +286,80 @@ h3 { font-size: var(--texto-lg); }
 @keyframes r5-girar { to { transform: rotate(360deg); } }
 
 /* ---------- Inicio: rejilla de módulos ---------- */
+/* Lanzador: una fila por familia, separadas por línea. Teselas grandes (táctil, 1024×768).
+   Alineadas a la izquierda: los iconos forman columnas (misma columna en todas las filas). */
 .r5-modulos {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: var(--esp-4);
+    max-width: 696px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
 }
+
+.r5-modulos__fila {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    gap: var(--esp-6);
+    padding: var(--esp-2) 0;
+    border-bottom: 0.5px solid var(--c-borde);
+}
+
+.r5-modulos__fila:last-child { border-bottom: none; }
 
 .r5-modulo {
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
-    gap: var(--esp-3);
-    min-height: 140px;
-    background: var(--c-superficie);
+    gap: var(--esp-2);
+    width: 150px;
+    background: none;
     border: none;
-    border-radius: var(--radio);
-    box-shadow: var(--sombra-1);
+    padding: 0;
     font-family: inherit;
-    font-size: var(--texto-lg);
-    font-weight: 600;
-    color: var(--c-texto);
     cursor: pointer;
-    transition: box-shadow 0.12s, transform 0.12s;
-    padding: var(--esp-4);
+}
+
+/* Icono redondeado de color (estilo iOS): el glifo va en blanco dentro del squircle. */
+.r5-modulo__sq {
+    width: 86px;
+    height: 86px;
+    border-radius: 24%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    box-shadow: 0 5px 14px rgba(9, 40, 50, 0.18);
+    transition: transform 0.12s;
+}
+
+.r5-modulo:not(:disabled):active .r5-modulo__sq { transform: scale(0.93); }
+
+.r5-modulo__icono { width: 48px; height: 48px; color: #fff; }
+
+.r5-modulo__label {
+    font-size: var(--texto-md);
+    font-weight: 500;
+    color: var(--c-texto);
     text-align: center;
+    line-height: 1.2;
 }
 
-.r5-modulo:not(:disabled):active { transform: scale(0.97); box-shadow: var(--sombra-2); }
-
-.r5-modulo:disabled { cursor: default; color: var(--c-texto-suave); opacity: 0.55; }
-
-.r5-modulo__icono {
-    width: 44px;
-    height: 44px;
-    color: var(--c-primario);
-}
-
-.r5-modulo:disabled .r5-modulo__icono { color: var(--c-texto-suave); }
+.r5-modulo:disabled { cursor: default; opacity: 0.4; }
 
 .r5-modulo__pronto {
-    font-size: 0.75rem;
+    font-size: 0.7rem;
     font-weight: 600;
     color: var(--c-texto-suave);
     text-transform: uppercase;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.05em;
 }
+
+/* Color por familia: agrupa de un vistazo. El teal es la marca; el resto solo clasifica. */
+.r5-sq--teal   { background: linear-gradient(160deg, #178394, #0c5c6c); }
+.r5-sq--blue   { background: linear-gradient(160deg, #3f7fe0, #2856b6); }
+.r5-sq--amber  { background: linear-gradient(160deg, #e8992e, #c2731a); }
+.r5-sq--purple { background: linear-gradient(160deg, #8067dd, #5a41ad); }
+.r5-sq--slate  { background: linear-gradient(160deg, #697880, #4a565c); }
 
 /* ---------- Login ---------- */
 .r5-login {
@@ -345,10 +373,10 @@ h3 { font-size: var(--texto-lg); }
 
 .r5-login__tarjeta {
     width: 100%;
-    max-width: 440px;
+    max-width: 400px;
     background: var(--c-superficie);
-    border-radius: var(--radio);
-    box-shadow: var(--sombra-2);
+    border-radius: 20px;
+    box-shadow: 0 24px 60px rgba(4, 24, 30, 0.34);
     padding: var(--esp-6);
     display: flex;
     flex-direction: column;
@@ -356,21 +384,36 @@ h3 { font-size: var(--texto-lg); }
 }
 
 .r5-login__marca {
-    text-align: center;
     display: flex;
     flex-direction: column;
-    gap: var(--esp-1);
+    align-items: center;
+    gap: var(--esp-3);
 }
 
-.r5-login__marca .nombre {
-    font-size: var(--texto-2xl);
-    font-weight: 700;
-    color: var(--c-primario);
+/* Icono de la app (mismo lenguaje que el icono real: squircle teal + monograma). */
+.r5-login__icono {
+    width: 66px;
+    height: 66px;
+    border-radius: 24%;
+    background: linear-gradient(160deg, #1c7793, #093749);
+    box-shadow: 0 8px 20px rgba(4, 24, 30, 0.28);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 31px;
+    font-weight: 800;
+    letter-spacing: -0.06em;
 }
 
-.r5-login__marca .detalle {
+.r5-login__icono span { position: relative; top: -0.02em; }
+
+.r5-login__env {
     font-size: var(--texto-sm);
-    color: var(--c-texto-suave);
+    color: var(--c-primario);
+    background: var(--c-primario-claro);
+    border-radius: 999px;
+    padding: 4px 12px;
 }
 
 .r5-login__pie {
@@ -583,4 +626,4 @@ h3 { font-size: var(--texto-lg); }
 .mt-5 { margin-top: var(--esp-5); }
 
 /* Escritorio ancho: contenido de formularios acotado para no estirar líneas */
-.r5-ancho-form { max-width: 640px; }
+.r5-ancho-form { max-width: 640px; margin-left: auto; margin-right: auto; }

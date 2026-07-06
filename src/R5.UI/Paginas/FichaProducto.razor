@@ -177,6 +177,12 @@
         && _producto.Pvp < _producto.PvpSinOferta
         && _producto.OfertaHasta is not null;
 
+    // Foco directo al buscador al entrar, listo para escanear (el autofocus no dispara al navegar).
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender) await JS.InvokeVoidAsync("r5.seleccionar", "busquedaProducto");
+    }
+
     private async Task BuscarAsync()
     {
         string codigo = _codigo.Trim();

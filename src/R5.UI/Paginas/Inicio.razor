@@ -1,14 +1,15 @@
-@* Inicio: rejilla de módulos según permisos del usuario (menús de la API).
-   Tesela grande táctil con icono; lo no implementado se ve deshabilitado con
-   "próximamente" para que el usuario sepa qué llegará sin poder perderse. *@
+@* Inicio: lanzador de módulos. Una fila por familia de color (stock, pedidos,
+   etiquetado, consulta, sistema), separadas por una línea. Teselas grandes para
+   uso táctil (pantalla mínima 1024×768). Lo no implementado queda deshabilitado. *@
 @page "/"
 @page "/inicio"
+@using System.Linq
 @inject SesionUsuario Sesion
 @inject NavigationManager Nav
 
 @if (Sesion.Autenticado)
 {
-    @if (_modulos.Count == 0)
+    @if (_grupos.Count == 0)
     {
         <div class="r5-cargando">
             <Icono Nombre="info" Clase="r5-modulo__icono" />
@@ -18,30 +19,40 @@
     else
     {
         <div class="r5-modulos">
-            @foreach (var modulo in _modulos)
+            @foreach (var grupo in _grupos)
             {
-                <button @key="modulo.CodMenu" class="r5-modulo" disabled="@(!modulo.Implementado)"
-                        @onclick="() => Abrir(modulo)">
-                    <Icono Nombre="@modulo.Icono" Clase="r5-modulo__icono" />
-                    <span>@modulo.Titulo</span>
-                    @if (!modulo.Implementado)
+                <div class="r5-modulos__fila" @key="grupo.Key">
+                    @foreach (var modulo in grupo)
                     {
-                        <span class="r5-modulo__pronto">Próximamente</span>
+                        <button @key="modulo.CodMenu" class="r5-modulo" disabled="@(!modulo.Implementado)"
+                                @onclick="() => Abrir(modulo)">
+                            <span class="r5-modulo__sq r5-sq--@modulo.Familia">
+                                <Icono Nombre="@modulo.Icono" Clase="r5-modulo__icono" />
+                            </span>
+                            <span class="r5-modulo__label">@modulo.Titulo</span>
+                            @if (!modulo.Implementado)
+                            {
+                                <span class="r5-modulo__pronto">Próximamente</span>
+                            }
+                        </button>
                     }
-                </button>
+                </div>
             }
         </div>
     }
 }
 
 @code {
-    private IReadOnlyList<ModuloApp> _modulos = Array.Empty<ModuloApp>();
+    private IReadOnlyList<IGrouping<string, ModuloApp>> _grupos = Array.Empty<IGrouping<string, ModuloApp>>();
 
     protected override void OnInitialized()
     {
         if (Sesion.Autenticado)
         {
-            _modulos = CatalogoModulos.ParaUsuario(Sesion.Usuario!.Menus);
+            // Ya vienen ordenados por Orden (familia): GroupBy conserva ese orden.
+            _grupos = CatalogoModulos.ParaUsuario(Sesion.Usuario!.Menus)
+                .GroupBy(m => m.Familia)
+                .ToList();
         }
     }
 

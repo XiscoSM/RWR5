@@ -220,9 +220,10 @@
 
     private bool _enfocarPeso;
 
-    // Foco al campo de peso en cuanto aparece (tras elegir producto o etiquetar una pesada).
+    // Foco al escáner al entrar; y al campo de peso cuando aparece (tras elegir producto o etiquetar).
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (firstRender) await JS.InvokeVoidAsync("r5.seleccionar", "busquedaEnvasado");
         if (_enfocarPeso)
         {
             _enfocarPeso = false;

@@ -278,6 +278,13 @@
         }
     }
 
+    // Foco directo al nº de empleado al entrar (el autofocus de Blazor no dispara al navegar).
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && _empleado is null)
+            await JS.InvokeVoidAsync("r5.seleccionar", "numEmpleado");
+    }
+
     private async Task ValidarEmpleadoAsync()
     {
         if (_ocupado || _numEmpleado is null or <= 0) return;

@@ -5,6 +5,7 @@
 @inject UsuarioService Usuarios
 @inject SesionUsuario Sesion
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
 @if (Sesion.Autenticado)
 {
@@ -52,6 +53,13 @@
     private short? _nuevoAlmacen;
     private bool _cambiando;
     private string _error = "";
+
+    // Foco directo al número de almacén al entrar (el autofocus de Blazor no dispara al navegar).
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && Sesion.Autenticado && Sesion.Usuario!.PermiteCambioAlm)
+            await JS.InvokeVoidAsync("r5.seleccionar", "nuevoAlmacen");
+    }
 
     private async Task CambiarAsync()
     {
