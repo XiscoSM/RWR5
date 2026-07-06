@@ -17,6 +17,11 @@ public sealed class TraspasoService
     public Task<ApiRespuesta<List<Traspaso>>> GetTraspasosAsync(short codAlm, short codUsuario, bool registrado, short top = 50, CancellationToken ct = default)
         => _api.GetAsync<List<Traspaso>>($"Traspasos/List/{codAlm}?codUsuario={codUsuario}&registrado={registrado}&top={top}", ct);
 
+    /// <summary>GET Traspasos/{num}/{fecha} — cabecera de un traspaso concreto (Reg, origen→destino, importe).
+    /// Necesaria al recepcionar en destino (módulo 31): el receptor no es el propietario y no lo ve en List.</summary>
+    public Task<ApiRespuesta<Traspaso>> GetCabeceraAsync(int numTraspaso, DateTime fecha, CancellationToken ct = default)
+        => _api.GetAsync<Traspaso>($"Traspasos/{numTraspaso}/{fecha:yyyy-MM-dd}", ct);
+
     /// <summary>
     /// GET Traspasos/{num}/{fecha}/Lineas — líneas. Sin pedido asociado: numPedido=0 y
     /// fechaPedido=1900-01-01 (el "sin fecha" de la BD; 0001-01-01 revienta SqlDateTime).

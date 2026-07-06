@@ -1,0 +1,592 @@
+@* Elaboración (módulo 32 de R3): transformar ingredientes (lotes EAN128) en un
+   producto elaborado con lote interno propio, registrando cantidades y puntos
+   críticos (APPCC). Flujo: elegir producto elaborable (o retomar una abierta) →
+   escanear ingredientes con cantidad → rellenar puntos críticos → registrar con
+   la cantidad elaborada → etiqueta de trazabilidad del lote interno. *@
+@page "/elaboracion"
+@inject ElaboracionService Elaboraciones
+@inject IVisorArchivos Visor
+@inject SesionUsuario Sesion
+@inject IJSRuntime JS
+
+<GuardiaModulo CodMenu="32">
+<div class="r5-columna">
+
+    @if (_prodElegido is null)
+    {
+        <div class="r5-fila">
+            <div class="r5-segmento">
+                <button class="@(!_verCerradas ? "activo" : "")" aria-pressed="@(!_verCerradas)" @onclick="() => CambiarFiltroAsync(false)" disabled="@_cargando">Abiertas</button>
+                <button class="@(_verCerradas ? "activo" : "")" aria-pressed="@_verCerradas" @onclick="() => CambiarFiltroAsync(true)" disabled="@_cargando">Cerradas</button>
+            </div>
+            <button class="r5-btn r5-btn--primario" style="margin-left:auto" @onclick="AbrirSelectorAsync" disabled="@_cargando">
+                + Nueva elaboración
+            </button>
+        </div>
+
+        <Aviso Tipo="@_tipoAviso" Mensaje="@_aviso" />
+
+        @if (_eligiendoProducto)
+        {
+            <div class="r5-tarjeta r5-columna">
+                <div class="r5-fila">
+                    <h3 style="margin:0">Elige el producto a elaborar</h3>
+                    <button class="r5-btn r5-btn--fantasma" style="margin-left:auto" @onclick="() => _eligiendoProducto = false">Cancelar</button>
+                </div>
+                @if (_cargando)
+                {
+                    <Cargando Texto="Cargando productos elaborables…" />
+                }
+                else if (_elaborables.Count == 0)
+                {
+                    <p class="r5-texto-suave">No hay productos elaborables en este almacén.</p>
+                }
+                else
+                {
+                    <div class="r5-docs">
+                        @foreach (var producto in _elaborables)
+                        {
+                            <button @key="producto.Prod" class="r5-doc" @onclick="() => NuevaElaboracionAsync(producto)">
+                                <Icono Nombre="elaboracion" Clase="r5-modulo__icono" />
+                                <span class="r5-doc__principal">
+                                    <span class="r5-doc__titulo">@producto.DescProd</span>
+                                    <span class="r5-doc__detalle">@producto.Prod @(producto.ControlPuntCrit ? "· con puntos críticos" : "")</span>
+                                </span>
+                            </button>
+                        }
+                    </div>
+                }
+            </div>
+        }
+        else if (_cargando)
+        {
+            <Cargando Texto="Cargando elaboraciones…" />
+        }
+        else if (_lista.Count == 0)
+        {
+            <div class="r5-cargando">
+                <Icono Nombre="elaboracion" Clase="r5-modulo__icono" />
+                <span>No tienes elaboraciones @(_verCerradas ? "cerradas" : "abiertas") en este almacén.</span>
+                <button class="r5-btn r5-btn--primario" @onclick="AbrirSelectorAsync">+ Nueva elaboración</button>
+            </div>
+        }
+        else
+        {
+            <div class="r5-docs">
+                @foreach (var elaboracion in _lista)
+                {
+                    <button @key="@($"{elaboracion.Fecha:yyyyMMdd}-{elaboracion.Elaboracion}")" class="r5-doc"
+                            @onclick="() => AbrirElaboracionAsync(elaboracion)">
+                        <Icono Nombre="elaboracion" Clase="r5-modulo__icono" />
+                        <span class="r5-doc__principal">
+                            <span class="r5-doc__titulo">@elaboracion.DescProd</span>
+                            <span class="r5-doc__detalle">
+                                Elaboración @elaboracion.Elaboracion · @Fecha(elaboracion.Fecha)
+                                @if (elaboracion.Lote > 0)
+                                {
+                                    <text> · Lote @elaboracion.Lote</text>
+                                }
+                            </span>
+                        </span>
+                        <span class="r5-doc__derecha">
+                            <span class="r5-badge @(elaboracion.Reg ? "r5-badge--cerrado" : "r5-badge--abierto")">
+                                @(elaboracion.Reg ? "Cerrada" : "Abierta")
+                            </span>
+                        </span>
+                    </button>
+                }
+            </div>
+        }
+    }
+    else
+    {
+        <div class="r5-tarjeta r5-columna">
+            <div class="r5-fila" style="flex-wrap: wrap;">
+                <div class="r5-ficha__identidad">
+                    <span class="r5-ficha__codigo">
+                        @_prodElegido.Prod ·
+                        @(_numElab > 0 ? $"Elaboración {_numElab} · {Fecha(_fechaElab)}" : "Elaboración nueva")
+                    </span>
+                    <span class="r5-ficha__nombre">@_prodElegido.DescProd</span>
+                </div>
+                <span class="r5-badge @(_reg ? "r5-badge--cerrado" : "r5-badge--abierto")">@(_reg ? "Cerrada" : "Abierta")</span>
+                <button class="r5-btn r5-btn--fantasma" style="margin-left:auto" @onclick="VolverListaAsync">← Elaboraciones</button>
+            </div>
+
+            @if (!_reg)
+            {
+                <form @onsubmit="AnadirIngredienteAsync" class="r5-buscador">
+                    <input id="busquedaElab" class="r5-input" type="text" inputmode="numeric" maxlength="17"
+                           placeholder="Escanea el EAN128 del ingrediente (16 dígitos)"
+                           @bind="_codigo" @bind:event="oninput" disabled="@_ocupado" />
+                    <input class="r5-input r5-input--numero" type="number" inputmode="decimal" step="0.001" min="0"
+                           placeholder="Cantidad" style="max-width: 140px;"
+                           @bind="_cantidad" @bind:event="oninput" disabled="@_ocupado" />
+                    <button type="submit" class="r5-btn r5-btn--primario"
+                            disabled="@(_ocupado || string.IsNullOrWhiteSpace(_codigo) || _cantidad <= 0)">
+                        Añadir
+                    </button>
+                </form>
+            }
+        </div>
+
+        <Aviso Tipo="@_tipoAviso" Mensaje="@_aviso" />
+
+        @if (_cargando)
+        {
+            <Cargando Texto="Cargando elaboración…" />
+        }
+        else
+        {
+            <div class="r5-tarjeta r5-columna">
+                <h3>Receta</h3>
+                @if (_receta.Count == 0)
+                {
+                    <p class="r5-texto-suave">Sin ingredientes definidos.</p>
+                }
+                else
+                {
+                    <div class="r5-tabla-scroll">
+                        <table class="r5-tabla">
+                            <thead><tr><th>Ingrediente</th><th>Obligatorio</th><th class="num">Acumulado</th></tr></thead>
+                            <tbody>
+                                @foreach (var ingrediente in _receta)
+                                {
+                                    <tr @key="ingrediente.Prod" class="@(ingrediente.Obligatorio && ingrediente.CantTotal <= 0 ? "" : "")">
+                                        <td>@ingrediente.Prod · @ingrediente.DescProd</td>
+                                        <td>
+                                            @if (ingrediente.Obligatorio)
+                                            {
+                                                <span class="r5-badge @(ingrediente.CantTotal > 0 ? "r5-badge--cerrado" : "r5-badge--aviso")">
+                                                    @(ingrediente.CantTotal > 0 ? "OK" : "Pendiente")
+                                                </span>
+                                            }
+                                        </td>
+                                        <td class="num">@Cantidad(ingrediente.CantTotal, true)</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+
+                @if (_intro.Count > 0)
+                {
+                    <h3 class="mt-5">Introducido</h3>
+                    <div class="r5-tabla-scroll">
+                        <table class="r5-tabla">
+                            <thead><tr><th>Ingrediente</th><th class="num">Cant.</th></tr></thead>
+                            <tbody>
+                                @foreach (var (captura, i) in _intro.Select((x, i) => (x, i)))
+                                {
+                                    <tr @key="i">
+                                        <td>@captura.Prod · @captura.DescProd</td>
+                                        <td class="num">@Cantidad(captura.Cant, true)</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+
+            @if (_ptosCriticos.Count > 0)
+            {
+                <div class="r5-tarjeta r5-columna">
+                    <h3>Puntos críticos (APPCC)</h3>
+                    @foreach (var punto in _ptosCriticos)
+                    {
+                        <div @key="punto.LineaPtoCritico" class="r5-fila" style="flex-wrap: wrap; align-items: flex-end;">
+                            <div class="r5-campo" style="flex: 1; min-width: 220px;">
+                                <label>@punto.Descripcion (@RangoTexto(punto))</label>
+                                <input class="r5-input r5-input--numero" type="number" inputmode="decimal" step="0.001"
+                                       @bind="punto.ValorIntro" disabled="@(_reg || _guardandoPto)" />
+                            </div>
+                            @if (!_reg)
+                            {
+                                <button class="r5-btn r5-btn--secundario" disabled="@_guardandoPto"
+                                        @onclick="() => GuardarPtoCriticoAsync(punto)">
+                                    Guardar
+                                </button>
+                            }
+                            <span class="r5-badge @(PuntoEnRango(punto) ? "r5-badge--cerrado" : "r5-badge--aviso")">
+                                @(punto.ValorIntro == 0 ? "Sin valor" : PuntoEnRango(punto) ? "En rango" : "Fuera de rango")
+                            </span>
+                        </div>
+                    }
+                </div>
+            }
+
+            @if (!_reg && _numElab > 0)
+            {
+                <div class="r5-tarjeta r5-columna">
+                    <div class="r5-fila" style="flex-wrap: wrap; align-items: flex-end;">
+                        <div class="r5-campo" style="min-width: 200px;">
+                            <label for="cantElaborada">Cantidad elaborada</label>
+                            <input id="cantElaborada" class="r5-input r5-input--numero" type="number" inputmode="decimal"
+                                   step="0.001" min="0" @bind="_cantElaborada" @bind:event="oninput" disabled="@_registrando" />
+                        </div>
+                        <BotonConfirmar Texto="Registrar elaboración"
+                                        Pregunta="@($"¿Cerrar la elaboración {_numElab} con {Cantidad(_cantElaborada, true)}? Genera el lote interno, no se puede deshacer.")"
+                                        TextoOcupado="Registrando…" Ocupado="@_registrando"
+                                        Deshabilitado="@(!PuedeRegistrar || _cantElaborada <= 0 || _cantElaborada >= 10000)"
+                                        OnConfirmar="RegistrarAsync" />
+                        <div style="margin-left:auto">
+                            <BotonConfirmar Texto="Eliminar" Peligro="true"
+                                            Pregunta="@($"¿Eliminar la elaboración {_numElab} con todo lo introducido?")"
+                                            TextoOcupado="Eliminando…" Ocupado="@_eliminando"
+                                            OnConfirmar="EliminarAsync" />
+                        </div>
+                    </div>
+                    @if (!PuedeRegistrar && MotivoNoRegistrar.Length > 0)
+                    {
+                        <span class="r5-texto-suave r5-texto-sm">@MotivoNoRegistrar</span>
+                    }
+                </div>
+            }
+
+            @if (_reg && _loteInterno > 0)
+            {
+                <div class="r5-tarjeta r5-fila" style="flex-wrap: wrap;">
+                    <span><strong>Lote interno @_loteInterno</strong> — etiqueta de trazabilidad lista para imprimir.</span>
+                    <button class="r5-btn r5-btn--primario" style="margin-left:auto" disabled="@_etiquetando"
+                            @onclick="EtiquetarAsync">
+                        @(_etiquetando ? "Generando…" : "Etiqueta")
+                    </button>
+                </div>
+            }
+        }
+    }
+</div>
+</GuardiaModulo>
+
+@code {
+    private bool _verCerradas;
+    private bool _cargando;
+    private bool _ocupado;
+    private bool _guardandoPto;
+    private bool _registrando;
+    private bool _eliminando;
+    private bool _etiquetando;
+    private bool _eligiendoProducto;
+    private string _aviso = "";
+    private string _tipoAviso = "error";
+
+    private List<ElabResumen> _lista = new();
+    private List<ElabProducto> _elaborables = new();
+
+    // Elaboración en curso.
+    private ElabProducto? _prodElegido;
+    private DateTime _fechaElab;
+    private int _numElab;
+    private bool _reg;
+    private int _loteInterno;
+    private List<ElabIngrediente> _receta = new();
+    private List<ElabIngredienteIntro> _intro = new();
+    private List<ElabPtoCritico> _ptosCriticos = new();
+
+    private string _codigo = "";
+    private decimal _cantidad;
+    private decimal _cantElaborada;
+    private bool _enfocarEscaner;
+
+    protected override Task OnInitializedAsync() => CargarListaAsync();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_enfocarEscaner)
+        {
+            _enfocarEscaner = false;
+            await JS.InvokeVoidAsync("r5.seleccionar", "busquedaElab");
+        }
+    }
+
+    private Task CambiarFiltroAsync(bool cerradas)
+    {
+        if (_verCerradas == cerradas) return Task.CompletedTask;
+        _verCerradas = cerradas;
+        return CargarListaAsync();
+    }
+
+    private async Task CargarListaAsync()
+    {
+        if (!Sesion.Autenticado) return;
+        _cargando = true;
+        _aviso = "";
+        _eligiendoProducto = false;
+        try
+        {
+            var respuesta = await Elaboraciones.GetElaboracionesAsync(
+                Sesion.Usuario!.Almacen.CodAlm, Sesion.Usuario.CodUsuario, _verCerradas);
+            if (!respuesta.Ok) { MostrarError(respuesta.Error); _lista = new(); return; }
+            _lista = respuesta.Datos ?? new();
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private async Task AbrirSelectorAsync()
+    {
+        _eligiendoProducto = true;
+        _aviso = "";
+        if (_elaborables.Count > 0) return;
+
+        _cargando = true;
+        try
+        {
+            var respuesta = await Elaboraciones.GetProductosAsync(Sesion.Usuario!.Almacen.CodAlm);
+            if (!respuesta.Ok) { MostrarError(respuesta.Error); return; }
+            _elaborables = respuesta.Datos ?? new();
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    // Elaboración nueva: fecha/número "vacíos" (2000-01-01 / 0) hasta el primer ingrediente.
+    private async Task NuevaElaboracionAsync(ElabProducto producto)
+    {
+        _prodElegido = producto;
+        _fechaElab = ElaboracionService.FechaNueva;
+        _numElab = 0;
+        _reg = false;
+        _loteInterno = 0;
+        _cantElaborada = 0;
+        _eligiendoProducto = false;
+        await CargarElabAsync();
+        _enfocarEscaner = true;
+    }
+
+    private async Task AbrirElaboracionAsync(ElabResumen resumen)
+    {
+        _prodElegido = new ElabProducto { Prod = resumen.Prod, DescProd = resumen.DescProd };
+        _fechaElab = resumen.Fecha;
+        _numElab = resumen.Elaboracion;
+        _reg = resumen.Reg;
+        _loteInterno = resumen.Lote;
+        _cantElaborada = 0;
+        await CargarElabAsync();
+        if (!_reg) _enfocarEscaner = true;
+    }
+
+    private async Task CargarElabAsync()
+    {
+        if (_prodElegido is null) return;
+        _cargando = true;
+        _aviso = "";
+        try
+        {
+            var tareaReceta = Elaboraciones.GetIngredientesAsync(_prodElegido.Prod, _fechaElab, _numElab);
+            var tareaIntro = Elaboraciones.GetIngredientesIntroAsync(_prodElegido.Prod, _fechaElab, _numElab);
+            var tareaPtos = Elaboraciones.GetPtosCriticosAsync(_prodElegido.Prod, _fechaElab, _numElab);
+            await Task.WhenAll(tareaReceta, tareaIntro, tareaPtos);
+
+            if (!tareaReceta.Result.Ok) { MostrarError(tareaReceta.Result.Error); return; }
+            _receta = tareaReceta.Result.Datos ?? new();
+            _intro = tareaIntro.Result.Ok ? tareaIntro.Result.Datos ?? new() : new();
+            _ptosCriticos = tareaPtos.Result.Ok ? tareaPtos.Result.Datos ?? new() : new();
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private async Task VolverListaAsync()
+    {
+        _prodElegido = null;
+        _aviso = "";
+        await CargarListaAsync();
+    }
+
+    private async Task AnadirIngredienteAsync()
+    {
+        string codigo = _codigo.Trim();
+        if (_ocupado || codigo.Length == 0 || _cantidad <= 0 || _prodElegido is null || !Sesion.Autenticado) return;
+
+        if (!EnvasadoService.TryParseEan128(codigo, out _, out _))
+        {
+            MostrarError("EAN128 de trazabilidad no válido: 8 dígitos de producto + 8 de lote.");
+            return;
+        }
+        // Tope de sanidad: una lectura del escaner caida en el campo cantidad (>=10.000)
+        // no puede acabar grabada como unidades.
+        if (_cantidad >= 10000) { MostrarError($"Cantidad {_cantidad} no valida: ¿has escaneado un codigo en el campo de cantidad?"); return; }
+
+        _ocupado = true;
+        _aviso = "";
+        try
+        {
+            int elabAnterior = _numElab;
+            var alta = new ElabIngredienteInsertDTO
+            {
+                ProdElab = _prodElegido.Prod,
+                Fecha = _fechaElab,
+                Elaboracion = _numElab,
+                Ean128 = codigo,
+                Cant = _cantidad,
+                CodAlm = Sesion.Usuario!.Almacen.CodAlm,
+                CodUsuario = Sesion.Usuario.CodUsuario
+            };
+            var respuesta = await Elaboraciones.PostIngredienteAsync(alta);
+            if (!respuesta.Ok || respuesta.Datos is null) { MostrarError(respuesta.Error); return; }
+
+            // El primer ingrediente crea la elaboración: quedarse con su fecha/número reales.
+            _fechaElab = respuesta.Datos.Fecha;
+            _numElab = respuesta.Datos.Elaboracion;
+
+            _tipoAviso = "exito";
+            _aviso = $"Ingrediente añadido ({Cantidad(_cantidad, true)}) a la elaboración {_numElab}.";
+            _codigo = "";
+            _cantidad = 0;
+
+            await CargarElabAsync();
+            if (elabAnterior != _numElab && elabAnterior > 0)
+            {
+                _tipoAviso = "info";
+                _aviso = $"Se ha abierto la elaboración {_numElab} (la anterior estaba cerrada).";
+            }
+        }
+        finally
+        {
+            _ocupado = false;
+            _enfocarEscaner = true;
+            StateHasChanged();
+        }
+    }
+
+    private string RangoTexto(ElabPtoCritico punto)
+        => punto.LineaCalc == 0
+            ? $"{Cantidad(punto.ValorIni, true)}–{Cantidad(punto.ValorFin, true)} {punto.DescTipoValor}"
+            : $"×{Cantidad(punto.ValorIni, true)}–×{Cantidad(punto.ValorFin, true)} del punto {punto.LineaCalc}";
+
+    // Rango del punto: estático, o relativo al valor de otro punto (LineaCalc), como en R3.
+    private bool PuntoEnRango(ElabPtoCritico punto)
+    {
+        if (punto.ValorIntro == 0) return false;
+        if (punto.LineaCalc == 0)
+            return punto.ValorIntro >= punto.ValorIni && punto.ValorIntro <= punto.ValorFin;
+
+        var referencia = _ptosCriticos.FirstOrDefault(p => p.LineaPtoCritico == punto.LineaCalc);
+        if (referencia is null) return true;
+        return punto.ValorIntro >= referencia.ValorIntro * punto.ValorIni
+            && punto.ValorIntro <= referencia.ValorIntro * punto.ValorFin;
+    }
+
+    private async Task GuardarPtoCriticoAsync(ElabPtoCritico punto)
+    {
+        if (_guardandoPto || _prodElegido is null || _numElab <= 0) return;
+
+        _guardandoPto = true;
+        _aviso = "";
+        try
+        {
+            var respuesta = await Elaboraciones.PostPtoCriticoAsync(
+                _prodElegido.Prod, _fechaElab, _numElab, punto.LineaPtoCritico, punto.ValorIntro);
+            if (!respuesta.Ok) { MostrarError(respuesta.Error); return; }
+
+            _tipoAviso = PuntoEnRango(punto) ? "exito" : "aviso";
+            _aviso = PuntoEnRango(punto)
+                ? $"{punto.Descripcion}: {Cantidad(punto.ValorIntro, true)} guardado."
+                : $"{punto.Descripcion}: guardado, pero FUERA de rango ({RangoTexto(punto)}).";
+        }
+        finally
+        {
+            _guardandoPto = false;
+        }
+    }
+
+    // Mismas comprobaciones que el Verificar de R3, en cliente (el proc revalida).
+    private bool PuedeRegistrar => MotivoNoRegistrar.Length == 0;
+
+    private string MotivoNoRegistrar
+    {
+        get
+        {
+            if (_intro.Count == 0) return "No se ha introducido ningún ingrediente.";
+            var falta = _receta.FirstOrDefault(i => i.Obligatorio && i.CantTotal <= 0);
+            if (falta is not null) return $"Falta el ingrediente obligatorio: {falta.DescProd}.";
+            if (_ptosCriticos.Any(p => p.ValorIntro == 0)) return "Faltan puntos críticos por rellenar.";
+            var fuera = _ptosCriticos.FirstOrDefault(p => !PuntoEnRango(p));
+            if (fuera is not null) return $"Punto crítico fuera de rango: {fuera.Descripcion} ({RangoTexto(fuera)}).";
+            return "";
+        }
+    }
+
+    private async Task RegistrarAsync()
+    {
+        if (_registrando || _prodElegido is null || _numElab <= 0 || _cantElaborada <= 0) return;
+
+        _registrando = true;
+        _aviso = "";
+        try
+        {
+            var respuesta = await Elaboraciones.RegistrarAsync(_prodElegido.Prod, _fechaElab, _numElab, _cantElaborada);
+            if (!respuesta.Ok || respuesta.Datos <= 0) { MostrarError(respuesta.Error); return; }
+
+            _loteInterno = respuesta.Datos;
+            _reg = true;
+            _tipoAviso = "exito";
+            _aviso = $"Elaboración {_numElab} registrada. Lote interno: {_loteInterno}.";
+        }
+        finally
+        {
+            _registrando = false;
+        }
+    }
+
+    private async Task EliminarAsync()
+    {
+        if (_eliminando || _prodElegido is null || _numElab <= 0) return;
+
+        _eliminando = true;
+        _aviso = "";
+        try
+        {
+            var respuesta = await Elaboraciones.EliminarAsync(_prodElegido.Prod, _fechaElab, _numElab);
+            if (!respuesta.Ok) { MostrarError(respuesta.Error); return; }
+            await VolverListaAsync();
+        }
+        finally
+        {
+            _eliminando = false;
+        }
+    }
+
+    private async Task EtiquetarAsync()
+    {
+        if (_etiquetando || _prodElegido is null || _loteInterno <= 0) return;
+
+        _etiquetando = true;
+        _aviso = "";
+        try
+        {
+            var pdf = await Elaboraciones.GetEtiquetaPdfAsync(_prodElegido.Prod, _loteInterno);
+            if (!pdf.Ok || pdf.Datos is null) { MostrarError(pdf.Error); return; }
+
+            try
+            {
+                await Visor.AbrirAsync($"EtiqTrazabilidad_{_prodElegido.Prod}_{_loteInterno}.pdf", pdf.Datos);
+                _tipoAviso = "exito";
+                _aviso = $"Etiqueta del lote {_loteInterno} lista.";
+            }
+            catch (Exception ex)
+            {
+                MostrarError("Etiqueta generada, pero no se pudo abrir el PDF: " + ex.Message);
+            }
+        }
+        finally
+        {
+            _etiquetando = false;
+        }
+    }
+
+    private void MostrarError(string mensaje)
+    {
+        _tipoAviso = "error";
+        _aviso = mensaje;
+    }
+}

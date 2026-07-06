@@ -1,0 +1,392 @@
+@* Despiece y etiquetas (módulo 31 de R3), dos modos:
+   1) Despiece: se escanea el EAN128 padre (producto+lote), se muestra el despiece en
+      grupos y se generan etiquetas de trazabilidad por componente (nº de etiquetas
+      elegible; el PDF sale del mismo rdlc EtiqTrazabilidad de R3).
+   2) Lotes de traspaso: para un traspaso REGISTRADO con destino este almacén, se crea
+      el lote interno de cada línea introduciendo el lote del proveedor, y se etiqueta.
+      (En R3 era un bucle de diálogos modales; aquí cada línea es una tarjeta.) *@
+@page "/despiece"
+@inject DespieceService Despieces
+@inject TraspasoService Traspasos
+@inject IVisorArchivos Visor
+@inject SesionUsuario Sesion
+@inject IJSRuntime JS
+
+<GuardiaModulo CodMenu="31">
+<div class="r5-columna">
+
+    <div class="r5-fila">
+        <div class="r5-segmento">
+            <button class="@(!_modoLotes ? "activo" : "")" aria-pressed="@(!_modoLotes)" @onclick="() => CambiarModo(false)">Despiece</button>
+            <button class="@(_modoLotes ? "activo" : "")" aria-pressed="@_modoLotes" @onclick="() => CambiarModo(true)">Lotes de traspaso</button>
+        </div>
+    </div>
+
+    @if (!_modoLotes)
+    {
+        <div class="r5-tarjeta r5-columna">
+            <form @onsubmit="BuscarDespieceAsync" class="r5-buscador">
+                <input id="busquedaDespiece" class="r5-input" type="text" inputmode="numeric" maxlength="17"
+                       placeholder="Escanea el EAN128 de trazabilidad (16 dígitos)"
+                       @bind="_codigo" @bind:event="oninput" autofocus disabled="@_ocupado" />
+                <button type="submit" class="r5-btn r5-btn--secundario" disabled="@(_ocupado || string.IsNullOrWhiteSpace(_codigo))">
+                    Buscar
+                </button>
+            </form>
+        </div>
+
+        <Aviso Tipo="@_tipoAviso" Mensaje="@_aviso" />
+
+        @if (_ocupado)
+        {
+            <Cargando />
+        }
+        else if (_lote is not null)
+        {
+            <div class="r5-tarjeta r5-columna">
+                <div class="r5-ficha__identidad">
+                    <span class="r5-ficha__codigo">@_lote.Prod · Lote @_lote.Lote</span>
+                    <span class="r5-ficha__nombre">@_lote.DescProd</span>
+                </div>
+
+                @if (_grupos.Count == 0)
+                {
+                    <p class="r5-texto-suave">Este producto no tiene despiece definido.</p>
+                }
+                else
+                {
+                    <div class="r5-campo">
+                        <label for="numEtiqs">Nº de etiquetas (por componente)</label>
+                        <div class="r5-fila">
+                            <button class="r5-btn r5-btn--secundario" @onclick="() => SumarEtiqs(-9)" disabled="@(_numEtiqs < 9)">−9</button>
+                            <button class="r5-btn r5-btn--secundario" @onclick="() => SumarEtiqs(-1)" disabled="@(_numEtiqs < 1)">−1</button>
+                            <input id="numEtiqs" class="r5-input r5-input--numero" type="text" inputmode="numeric"
+                                   @bind="_numEtiqs" @bind:event="oninput" style="max-width: 110px;" />
+                            <button class="r5-btn r5-btn--secundario" @onclick="() => SumarEtiqs(1)">+1</button>
+                            <button class="r5-btn r5-btn--secundario" @onclick="() => SumarEtiqs(9)">+9</button>
+                        </div>
+                    </div>
+
+                    <div class="r5-docs">
+                        @foreach (var grupo in _grupos)
+                        {
+                            <div @key="grupo.Key" class="r5-doc" style="flex-direction: column; align-items: stretch; cursor: default;">
+                                @if (grupo.Titulo.Length > 0)
+                                {
+                                    <span class="r5-doc__titulo">@grupo.Titulo</span>
+                                }
+                                @foreach (var componente in grupo.Componentes)
+                                {
+                                    <div class="r5-fila" @key="componente.Prod" style="justify-content: space-between; flex-wrap: wrap;">
+                                        <span class="r5-doc__principal">
+                                            <span>@componente.Prod · @componente.DescProdCompleta</span>
+                                            <span class="r5-doc__detalle">@componente.NumEtiqPrin etiqs de serie · @(_numEtiqs * componente.NumEtiqPrint) copias a imprimir</span>
+                                        </span>
+                                        <button class="r5-btn r5-btn--primario" disabled="@(_etiquetando || _numEtiqs <= 0)"
+                                                @onclick="() => EtiquetarComponenteAsync(componente)">
+                                            Etiqueta
+                                        </button>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    }
+    else
+    {
+        @if (_cabTraspaso is null)
+        {
+            <form class="r5-tarjeta r5-columna r5-ancho-form" @onsubmit="CargarTraspasoAsync">
+                <h3>Traspaso recibido</h3>
+                <div class="r5-fila">
+                    <div class="r5-campo" style="flex:1">
+                        <label for="fechaTraspDesp">Fecha del traspaso</label>
+                        <input id="fechaTraspDesp" class="r5-input" type="date" @bind="_fechaTrasp" disabled="@_ocupado" />
+                    </div>
+                    <div class="r5-campo" style="flex:1">
+                        <label for="numTraspDesp">Nº de traspaso</label>
+                        <input id="numTraspDesp" class="r5-input r5-input--numero" type="text" inputmode="numeric"
+                               @bind="_numTraspaso" @bind:event="oninput" disabled="@_ocupado" />
+                    </div>
+                </div>
+                <Aviso Mensaje="@(_tipoAviso == "error" ? _aviso : "")" />
+                <button type="submit" class="r5-btn r5-btn--primario r5-btn--bloque"
+                        disabled="@(_ocupado || _numTraspaso is null or <= 0)">
+                    @(_ocupado ? "Comprobando…" : "Cargar líneas")
+                </button>
+            </form>
+        }
+        else
+        {
+            <div class="r5-tarjeta r5-columna">
+                <div class="r5-fila" style="flex-wrap: wrap;">
+                    <div class="r5-ficha__identidad">
+                        <span class="r5-ficha__codigo">Traspaso @_numTraspaso · @(Fecha(_fechaTrasp))</span>
+                        <span class="r5-ficha__nombre">@(_cabTraspaso.AlmOrigen?.DescAlm ?? "?") → @(_cabTraspaso.AlmDest?.DescAlm ?? "?")</span>
+                    </div>
+                    <button class="r5-btn r5-btn--fantasma" style="margin-left:auto" @onclick="CambiarTraspaso">Cambiar</button>
+                </div>
+            </div>
+
+            <Aviso Tipo="@_tipoAviso" Mensaje="@_aviso" />
+
+            @if (_lineasTraspaso.Count == 0)
+            {
+                <div class="r5-cargando">
+                    <Icono Nombre="info" Clase="r5-modulo__icono" />
+                    <span>El traspaso no tiene líneas.</span>
+                </div>
+            }
+            else
+            {
+                <div class="r5-docs">
+                    @foreach (var linea in _lineasTraspaso)
+                    {
+                        <div @key="linea.Linea" class="r5-doc" style="cursor: default; flex-wrap: wrap;">
+                            <span class="r5-doc__principal">
+                                <span class="r5-doc__titulo">@linea.Prod.CodProd · @linea.Prod.DescProd</span>
+                                <span class="r5-doc__detalle">
+                                    Línea @linea.Linea · @Cantidad(linea.Cant, linea.Prod.DecimalesEnCant)
+                                    @if (_lotesCreados.TryGetValue(linea.Linea, out int loteCreado))
+                                    {
+                                        <text> · Lote creado: @loteCreado</text>
+                                    }
+                                </span>
+                            </span>
+                            <span class="r5-doc__derecha" style="gap: var(--esp-2);">
+                                @if (_lotesCreados.TryGetValue(linea.Linea, out int lote))
+                                {
+                                    <button class="r5-btn r5-btn--secundario" disabled="@_etiquetando"
+                                            @onclick="() => EtiquetarLoteAsync(linea.Prod.CodProd, lote)">
+                                        Etiqueta
+                                    </button>
+                                }
+                                else
+                                {
+                                    <input class="r5-input r5-input--numero" type="text" inputmode="numeric"
+                                           placeholder="Lote proveedor" style="max-width: 150px;"
+                                           @bind="_lotesProv[linea.Linea]" @bind:event="oninput" disabled="@_creandoLote" />
+                                    <button class="r5-btn r5-btn--primario" disabled="@(_creandoLote || !LoteProvValido(linea.Linea))"
+                                            @onclick="() => CrearLoteAsync(linea)">
+                                        Crear lote
+                                    </button>
+                                }
+                            </span>
+                        </div>
+                    }
+                </div>
+            }
+        }
+    }
+</div>
+</GuardiaModulo>
+
+@code {
+    private bool _modoLotes;
+    private bool _ocupado;
+    private bool _etiquetando;
+    private bool _creandoLote;
+    private string _aviso = "";
+    private string _tipoAviso = "error";
+
+    // --- Modo despiece ---
+    private string _codigo = "";
+    private DespieceLote? _lote;
+    private List<GrupoDespiece> _grupos = new();
+    private int _numEtiqs = 1;
+
+    private sealed record GrupoDespiece(int Key, string Titulo, List<DespieceLin> Componentes);
+
+    // --- Modo lotes de traspaso ---
+    private DateTime _fechaTrasp = DateTime.Today;
+    private int? _numTraspaso;
+    private Traspaso? _cabTraspaso;
+    private List<TraspasoLin> _lineasTraspaso = new();
+    private readonly Dictionary<int, string> _lotesProv = new();   // línea → lote proveedor tecleado
+    private readonly Dictionary<int, int> _lotesCreados = new();   // línea → lote interno creado
+
+    // Foco al escáner al entrar (el autofocus de Blazor no dispara al navegar).
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender) await JS.InvokeVoidAsync("r5.seleccionar", "busquedaDespiece");
+    }
+
+    private void CambiarModo(bool lotes)
+    {
+        if (_modoLotes == lotes) return;
+        _modoLotes = lotes;
+        _aviso = "";
+    }
+
+    private async Task BuscarDespieceAsync()
+    {
+        if (_ocupado || string.IsNullOrWhiteSpace(_codigo)) return;
+
+        if (!EnvasadoService.TryParseEan128(_codigo, out int prod, out int lote))
+        {
+            MostrarError("EAN128 de trazabilidad no válido: 8 dígitos de producto + 8 de lote.");
+            return;
+        }
+
+        _ocupado = true;
+        _aviso = "";
+        _lote = null;
+        _grupos = new();
+        try
+        {
+            var respuesta = await Despieces.GetLoteAsync(prod, lote);
+            if (!respuesta.Ok || respuesta.Datos is null) { MostrarError(respuesta.Error); return; }
+
+            _lote = respuesta.Datos;
+            _numEtiqs = 1;
+
+            var despiece = await Despieces.GetDespieceAsync(prod, lote);
+            if (!despiece.Ok) { MostrarError(despiece.Error); return; }
+
+            // Agrupar por nº de despiece: la fila con Prod=0 es el título del grupo.
+            _grupos = (despiece.Datos ?? new())
+                .GroupBy(l => l.Despiece)
+                .Select(g => new GrupoDespiece(
+                    g.Key,
+                    g.FirstOrDefault(l => l.Prod == 0)?.DescProdCompleta ?? "",
+                    g.Where(l => l.Prod > 0).ToList()))
+                .Where(g => g.Componentes.Count > 0)
+                .ToList();
+        }
+        finally
+        {
+            _ocupado = false;
+            StateHasChanged();
+            await JS.InvokeVoidAsync("r5.seleccionar", "busquedaDespiece");
+        }
+    }
+
+    private void SumarEtiqs(int val)
+    {
+        int nuevo = _numEtiqs + val;
+        _numEtiqs = nuevo < 0 ? 0 : nuevo;
+    }
+
+    // Genera la etiqueta de trazabilidad del componente con el LOTE DEL PADRE (como R3).
+    // Las copias (nº etiquetas × NumEtiqPrint) se eligen al imprimir el PDF.
+    private async Task EtiquetarComponenteAsync(DespieceLin componente)
+    {
+        if (_etiquetando || _lote is null) return;
+        await AbrirEtiquetaAsync(componente.Prod, _lote.Lote,
+            $"Etiqueta de {componente.DescProdCompleta} lista: imprime {_numEtiqs * componente.NumEtiqPrint} copias.");
+    }
+
+    private async Task CargarTraspasoAsync()
+    {
+        if (_ocupado || _numTraspaso is null or <= 0 || !Sesion.Autenticado) return;
+
+        _ocupado = true;
+        _aviso = "";
+        try
+        {
+            var cab = await Traspasos.GetCabeceraAsync(_numTraspaso.Value, _fechaTrasp);
+            if (!cab.Ok || cab.Datos is null) { MostrarError(cab.Error); return; }
+            if (cab.Datos.AlmDest is null || cab.Datos.AlmDest.CodAlm <= 0)
+            { MostrarError($"El traspaso {_numTraspaso} de {Fecha(_fechaTrasp)} no existe."); return; }
+
+            // Mismas guardas que R3: registrado y con destino en este almacén.
+            if (!cab.Datos.Registrado)
+            { MostrarError($"El traspaso {_numTraspaso} no está registrado todavía."); return; }
+            if (cab.Datos.AlmDest.CodAlm != Sesion.Usuario!.Almacen.CodAlm)
+            { MostrarError($"El destino del traspaso es el almacén {cab.Datos.AlmDest.CodAlm}, no el actual ({Sesion.Usuario.Almacen.CodAlm})."); return; }
+
+            var lineas = await Traspasos.GetLineasAsync(_numTraspaso.Value, _fechaTrasp);
+            if (!lineas.Ok) { MostrarError(lineas.Error); return; }
+
+            _cabTraspaso = cab.Datos;
+            _lineasTraspaso = lineas.Datos ?? new();
+            _lotesProv.Clear();
+            _lotesCreados.Clear();
+            foreach (var linea in _lineasTraspaso) _lotesProv[linea.Linea] = "";
+        }
+        finally
+        {
+            _ocupado = false;
+        }
+    }
+
+    private void CambiarTraspaso()
+    {
+        _cabTraspaso = null;
+        _lineasTraspaso = new();
+        _aviso = "";
+    }
+
+    private bool LoteProvValido(int linea)
+        => _lotesProv.TryGetValue(linea, out var texto) && int.TryParse(texto?.Trim(), out int lote) && lote > 0;
+
+    private async Task CrearLoteAsync(TraspasoLin linea)
+    {
+        if (_creandoLote || _numTraspaso is null || !int.TryParse(_lotesProv.GetValueOrDefault(linea.Linea, "").Trim(), out int loteProv) || loteProv <= 0)
+            return;
+
+        _creandoLote = true;
+        _aviso = "";
+        try
+        {
+            var alta = new LoteTraspasoInsertDTO
+            {
+                Prod = linea.Prod.CodProd,
+                FechaTrasp = _fechaTrasp,
+                Traspaso = _numTraspaso.Value,
+                LineaTrasp = linea.Linea,
+                NumLoteProv = loteProv
+            };
+            var respuesta = await Despieces.PostLoteTraspasoAsync(alta);
+            if (!respuesta.Ok || respuesta.Datos <= 0) { MostrarError(respuesta.Error); return; }
+
+            _lotesCreados[linea.Linea] = respuesta.Datos;
+            _tipoAviso = "exito";
+            _aviso = $"{linea.Prod.DescProd}: lote {respuesta.Datos} creado (lote proveedor {loteProv}).";
+        }
+        finally
+        {
+            _creandoLote = false;
+        }
+    }
+
+    private Task EtiquetarLoteAsync(int prod, int lote)
+        => AbrirEtiquetaAsync(prod, lote, $"Etiqueta del lote {lote} lista.");
+
+    private async Task AbrirEtiquetaAsync(int prod, int lote, string mensajeExito)
+    {
+        if (_etiquetando) return;
+
+        _etiquetando = true;
+        _aviso = "";
+        try
+        {
+            var pdf = await Despieces.GetEtiquetaPdfAsync(prod, lote);
+            if (!pdf.Ok || pdf.Datos is null) { MostrarError(pdf.Error); return; }
+
+            try
+            {
+                await Visor.AbrirAsync($"EtiqTrazabilidad_{prod}_{lote}.pdf", pdf.Datos);
+                _tipoAviso = "exito";
+                _aviso = mensajeExito;
+            }
+            catch (Exception ex)
+            {
+                MostrarError("Etiqueta generada, pero no se pudo abrir el PDF: " + ex.Message);
+            }
+        }
+        finally
+        {
+            _etiquetando = false;
+        }
+    }
+
+    private void MostrarError(string mensaje)
+    {
+        _tipoAviso = "error";
+        _aviso = mensaje;
+    }
+}

@@ -29,6 +29,8 @@ public static class CatalogoModulos
         // Etiquetado (ámbar)
         [12] = new(12, "Etiquetas", "/etiquetas", "etiquetas", true, "amber", 30),
         [27] = new(27, "Pesar y etiquetar", "/envasado", "balanza", true, "amber", 31),
+        [31] = new(31, "Despiece", "/despiece", "despiece", true, "amber", 32),
+        [32] = new(32, "Elaboración", "/elaboracion", "elaboracion", true, "amber", 33),
         // Consulta (morado)
         [7] = new(7, "Ficha producto", "/fichaProducto", "producto", true, "purple", 40),
         [22] = new(22, "Informes", "/informes", "informes", true, "purple", 41),
