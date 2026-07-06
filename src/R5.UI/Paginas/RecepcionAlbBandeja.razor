@@ -20,6 +20,13 @@
         </button>
     </div>
 
+    @if (!_cargando && string.IsNullOrEmpty(_error) && _albaranes.Count > 0)
+    {
+        @* Filtro por proveedor en memoria (nombre, código o nº de albarán de proveedor). *@
+        <input class="r5-input" type="text" placeholder="Filtrar por proveedor o nº de albarán…"
+               @bind="_filtroProv" @bind:event="oninput" />
+    }
+
     @if (_cargando)
     {
         <Cargando Texto="Cargando albaranes…" />
@@ -36,9 +43,13 @@
             <button class="r5-btn r5-btn--primario" @onclick='() => Nav.NavigateTo("/recepcionAlb/alta")'>+ Nueva recepción</button>
         </div>
     }
+    else if (AlbaranesFiltrados.Count == 0)
+    {
+        <p class="r5-texto-suave">Ningún albarán coincide con «@_filtroProv».</p>
+    }
     else
     {
-        <ListaPaginada Items="_albaranes" Context="albaran">
+        <ListaPaginada Items="AlbaranesFiltrados" Context="albaran">
             <Fila>
                 <button @key="@($"{albaran.Fecha:yyyyMMdd}-{albaran.NumAlbaran}")" class="r5-doc"
                         @onclick="() => AbrirDetalle(albaran)">
@@ -80,7 +91,22 @@
     private const short Tope = 300;
     private bool _registrados;
     private bool _cargando = true;
+    private string _filtroProv = "";
     private string _error = "";
+
+    // Filtro en cliente por proveedor (nombre/código) o nº de albarán del proveedor.
+    private IReadOnlyList<Albaran> AlbaranesFiltrados
+    {
+        get
+        {
+            var f = _filtroProv.Trim();
+            if (f.Length == 0) return _albaranes;
+            return _albaranes.Where(a =>
+                (a.Prov.DescProv ?? "").Contains(f, StringComparison.OrdinalIgnoreCase)
+                || a.Prov.CodProv.ToString().Contains(f)
+                || (a.NumAlbProv ?? "").Contains(f, StringComparison.OrdinalIgnoreCase)).ToList();
+        }
+    }
     private List<Albaran> _albaranes = new();
 
     protected override Task OnInitializedAsync() => CargarAsync();

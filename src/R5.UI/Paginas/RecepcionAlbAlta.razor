@@ -7,6 +7,7 @@
 @page "/recepcionAlb/alta"
 @inject AlbaranService Albaranes
 @inject ProveedorService Proveedores
+@inject PedidoCompraService Pedidos
 @inject SesionUsuario Sesion
 @inject NavigationManager Nav
 @inject IJSRuntime JS
@@ -99,6 +100,84 @@
                 </div>
             </div>
 
+            @* Recepción contra pedido de compra (opcional): imputa el albarán a un pedido
+               y precarga las cantidades pedidas. El nº de pedido viaja al Get de producto y
+               a la línea. Se elige tecleando el número o de la lista de pendientes, y se
+               confirma viendo los productos del pedido. Solo antes de la 1ª línea. *@
+            @if (_pedidoConfirmado)
+            {
+                <div class="r5-fila">
+                    <span class="r5-chip r5-chip--suave">Contra pedido @_numPedidoContra</span>
+                    @if (_numAlbaran == 0)
+                    {
+                        <button class="r5-btn r5-btn--fantasma r5-btn--sm" @onclick="QuitarPedido">Quitar</button>
+                    }
+                </div>
+            }
+            else if (_numAlbaran == 0)
+            {
+                <div class="r5-columna" style="gap: var(--esp-2);">
+                    <div class="r5-fila" style="flex-wrap: wrap; align-items: flex-end;">
+                        <div class="r5-campo" style="min-width: 200px;">
+                            <label for="numPedidoContra">Recepción contra pedido (opcional)</label>
+                            <input id="numPedidoContra" class="r5-input r5-input--numero" type="text" inputmode="numeric"
+                                   placeholder="Nº de pedido" @bind="_numPedidoTexto" @bind:event="oninput" disabled="@_ocupadoPedido" />
+                        </div>
+                        <button class="r5-btn r5-btn--secundario" @onclick="() => VerPedidoAsync(0)"
+                                disabled="@(_ocupadoPedido || string.IsNullOrWhiteSpace(_numPedidoTexto))">Ver pedido</button>
+                        <button class="r5-btn r5-btn--fantasma" @onclick="ListarPedidosAsync" disabled="@_ocupadoPedido">
+                            Pedidos pendientes del proveedor
+                        </button>
+                    </div>
+
+                    @if (_ocupadoPedido)
+                    {
+                        <Cargando Texto="Cargando pedido…" />
+                    }
+                    else if (_verLineasPedido)
+                    {
+                        <div class="r5-tarjeta r5-columna">
+                            <h3 style="margin:0">Pedido @_pedidoPrevio · @_lineasPedido.Count líneas</h3>
+                            <p class="r5-texto-suave r5-texto-sm">Comprueba que es el pedido correcto por sus productos.</p>
+                            <div class="r5-tabla-scroll">
+                                <table class="r5-tabla">
+                                    <thead><tr><th>Cód.</th><th>Producto</th><th class="num">Pedida</th></tr></thead>
+                                    <tbody>
+                                        @foreach (var l in _lineasPedido)
+                                        {
+                                            <tr @key="l.Linea">
+                                                <td>@l.Prod.CodProd</td>
+                                                <td>@l.Prod.DescProd</td>
+                                                <td class="num">@Cantidad(l.Cant, l.Prod.DecimalesEnCant)</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="r5-fila">
+                                <button class="r5-btn r5-btn--primario" @onclick="ConfirmarPedido">Sí, recepcionar contra este pedido</button>
+                                <button class="r5-btn r5-btn--fantasma" @onclick="CancelarSeleccionPedido">Cancelar</button>
+                            </div>
+                        </div>
+                    }
+                    else if (_pedidosPendientes.Count > 0)
+                    {
+                        <div class="r5-docs">
+                            @foreach (var p in _pedidosPendientes)
+                            {
+                                <button @key="p.NumPedido" class="r5-doc" @onclick="() => VerPedidoAsync(p.NumPedido)">
+                                    <Icono Nombre="pedido-compra" Clase="r5-modulo__icono" />
+                                    <span class="r5-doc__principal">
+                                        <span class="r5-doc__titulo">Pedido @p.NumPedido</span>
+                                        <span class="r5-doc__detalle">@Fecha(p.Fecha) · @p.Prods prods</span>
+                                    </span>
+                                </button>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+
             <form @onsubmit="BuscarProductoAsync" class="r5-buscador">
                 <input id="busquedaRecepcion" class="r5-input" type="text" inputmode="numeric"
                        placeholder="Escanea un EAN o teclea el código de producto"
@@ -146,7 +225,7 @@
                 <div class="r5-fila">
                     <div class="r5-campo" style="flex:1">
                         <label for="cajasRec">Cajas</label>
-                        <input id="cajasRec" class="r5-input r5-input--numero" type="number" inputmode="numeric" min="0"
+                        <input id="cajasRec" class="r5-input r5-input--numero" type="text" inputmode="numeric" min="0"
                                value="@_cajas" @oninput="CambioCajas" />
                     </div>
                     <div class="r5-campo" style="flex:1">
@@ -216,6 +295,16 @@
     private bool _cargandoLineas;
     private readonly DateTime _fecha = DateTime.Today;
 
+    // Recepción contra pedido de compra (opcional).
+    private string _numPedidoTexto = "";
+    private int _numPedidoContra;           // pedido confirmado al que se imputa el albarán (0 = libre)
+    private bool _pedidoConfirmado;
+    private bool _ocupadoPedido;
+    private bool _verLineasPedido;          // mostrando las líneas del pedido para confirmar
+    private int _pedidoPrevio;              // pedido en previsualización
+    private List<PedidoCompra> _pedidosPendientes = new();
+    private List<PedidoCompraLin> _lineasPedido = new();
+
     private short UnidsCaja => _linea is null ? (short)1
         : (_linea.UnidsCaja > 0 ? _linea.UnidsCaja : (_linea.Prod.UnidsCaja > 0 ? _linea.Prod.UnidsCaja : (short)1));
 
@@ -269,6 +358,85 @@
         _gamas = new();
         _linea = null;
         _aviso = "";
+        // Los pedidos son por proveedor: cambiar de proveedor invalida la selección.
+        QuitarPedido();
+        _numPedidoTexto = "";
+        _pedidosPendientes = new();
+        CancelarSeleccionPedido();
+    }
+
+    // --- Recepción contra pedido ---
+
+    // Previsualiza las líneas de un pedido (por nº tecleado si num=0, o el de la lista)
+    // para que el operario confirme que es el correcto antes de imputarle el albarán.
+    private async Task VerPedidoAsync(int num)
+    {
+        int pedido = num;
+        if (pedido == 0 && !int.TryParse(_numPedidoTexto.Trim(), out pedido)) { MostrarError("Introduce un nº de pedido válido."); return; }
+        if (_ocupadoPedido || pedido <= 0) return;
+
+        _ocupadoPedido = true;
+        _aviso = "";
+        _verLineasPedido = false;
+        try
+        {
+            var r = await Pedidos.GetLineasAsync(pedido);
+            if (!r.Ok) { MostrarError(r.Error); return; }
+            _lineasPedido = r.Datos ?? new();
+            if (_lineasPedido.Count == 0) { MostrarError($"El pedido {pedido} no tiene líneas o no existe."); return; }
+            _pedidoPrevio = pedido;
+            _verLineasPedido = true;
+            _pedidosPendientes = new(); // colapsa la lista al pasar a previsualizar
+        }
+        finally
+        {
+            _ocupadoPedido = false;
+        }
+    }
+
+    // Lista los pedidos de compra pendientes del proveedor elegido (filtrado en cliente).
+    private async Task ListarPedidosAsync()
+    {
+        if (_ocupadoPedido || _gamaElegida is null || !Sesion.Autenticado) return;
+
+        _ocupadoPedido = true;
+        _aviso = "";
+        _verLineasPedido = false;
+        try
+        {
+            var r = await Pedidos.GetPedidosAsync(Sesion.Usuario!.Almacen.CodAlm, Sesion.Usuario.CodUsuario, reg: false);
+            if (!r.Ok) { MostrarError(r.Error); return; }
+            _pedidosPendientes = (r.Datos ?? new()).Where(p => p.Prov.CodProv == _gamaElegida.CodProv).ToList();
+            if (_pedidosPendientes.Count == 0) MostrarError("Este proveedor no tiene pedidos de compra pendientes.");
+        }
+        finally
+        {
+            _ocupadoPedido = false;
+        }
+    }
+
+    private void ConfirmarPedido()
+    {
+        _numPedidoContra = _pedidoPrevio;
+        _pedidoConfirmado = true;
+        _verLineasPedido = false;
+        _pedidosPendientes = new();
+        _lineasPedido = new();
+        _tipoAviso = "info";
+        _aviso = $"Recepcionando contra el pedido {_numPedidoContra}: los productos vendrán con su cantidad pedida.";
+    }
+
+    private void CancelarSeleccionPedido()
+    {
+        _verLineasPedido = false;
+        _pedidoPrevio = 0;
+        _lineasPedido = new();
+    }
+
+    private void QuitarPedido()
+    {
+        _pedidoConfirmado = false;
+        _numPedidoContra = 0;
     }
 
     // Cajas y cantidad van ligadas: cambiar cajas recalcula cantidad (cajas × unids/caja).
@@ -308,13 +476,13 @@
             if (codigo.Length >= 8 && long.TryParse(codigo, out long ean))
             {
                 respuesta = await Albaranes.GetLineaPorEanAsync(_numAlbaran, _fecha, ean, codAlm,
-                    _gamaElegida.CodProv, _gamaElegida.Gama.CodGama);
+                    _gamaElegida.CodProv, _gamaElegida.Gama.CodGama, _numPedidoContra);
                 _eanEscaneado = ean;
             }
             else if (int.TryParse(codigo, out int codProd) && codProd > 0)
             {
                 respuesta = await Albaranes.GetLineaPorProdAsync(_numAlbaran, _fecha, codProd, codAlm,
-                    _gamaElegida.CodProv, _gamaElegida.Gama.CodGama);
+                    _gamaElegida.CodProv, _gamaElegida.Gama.CodGama, _numPedidoContra);
             }
             else
             {
@@ -362,7 +530,7 @@
                 TipoLinAtipico = _linea.TipoLinAtipico,
                 Cajas = _cajas,
                 PTarifa = (decimal)_linea.PTarifa,
-                NumPedido = 0,
+                NumPedido = _numPedidoContra,
                 DtosComercialesTexto = _linea.DtosComercialesTexto ?? "",
                 Iva = _linea.Prod.Iva,
                 Reg = false,

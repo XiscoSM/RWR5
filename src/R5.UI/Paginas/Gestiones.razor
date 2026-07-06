@@ -16,7 +16,7 @@
             <h3>Identifícate</h3>
             <div class="r5-campo">
                 <label for="numEmpleado">Número de empleado</label>
-                <input id="numEmpleado" class="r5-input r5-input--numero" type="number" inputmode="numeric"
+                <input id="numEmpleado" class="r5-input r5-input--numero" type="text" inputmode="numeric"
                        @bind="_numEmpleado" @bind:event="oninput" autofocus disabled="@_ocupado" />
             </div>
             <Aviso Mensaje="@(_tipoAviso == "error" ? _aviso : "")" />
@@ -80,7 +80,7 @@
 
                 <div class="r5-campo">
                     <label for="empleadoDest">Nº de empleado para quien se solicita</label>
-                    <input id="empleadoDest" class="r5-input r5-input--numero" type="number" inputmode="numeric"
+                    <input id="empleadoDest" class="r5-input r5-input--numero" type="text" inputmode="numeric"
                            @bind="_empleadoDestNum" @bind:event="oninput" disabled="@_enviandoSolicitud" />
                     @if (_empleadoDest is not null && _empleadoDestNum == _empleadoDest.Empleado)
                     {
@@ -165,7 +165,7 @@
                 </p>
                 <div class="r5-campo">
                     <label for="numFirma">Nº de firma para confirmar (documento @_firmando.Mov)</label>
-                    <input id="numFirma" class="r5-input r5-input--numero" type="number" inputmode="numeric"
+                    <input id="numFirma" class="r5-input r5-input--numero" type="text" inputmode="numeric"
                            @bind="_numFirma" @bind:event="oninput" disabled="@_ocupado" />
                 </div>
                 <div class="r5-fila">

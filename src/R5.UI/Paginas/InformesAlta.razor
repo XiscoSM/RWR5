@@ -72,7 +72,7 @@
                 {
                     <div class="r5-campo" style="min-width: 180px;">
                         <label for="almDestInf">Almacén destino@(_tipoElegido.AlmDest == 2 ? " *" : "")</label>
-                        <input id="almDestInf" class="r5-input r5-input--numero" type="number" inputmode="numeric"
+                        <input id="almDestInf" class="r5-input r5-input--numero" type="text" inputmode="numeric"
                                min="0" max="999" @bind="_codAlmDest" disabled="@(_numInforme > 0)" />
                     </div>
                 }
@@ -107,7 +107,7 @@
                     {
                         <div class="r5-campo" style="min-width: 130px; flex: 1;">
                             <label>Cajas@(Oblig(_tipoElegido.Cajas))</label>
-                            <input class="r5-input r5-input--numero" type="number" inputmode="numeric" min="0" @bind="_cajas" />
+                            <input class="r5-input r5-input--numero" type="text" inputmode="numeric" min="0" @bind="_cajas" />
                         </div>
                     }
                     @if (_tipoElegido.Cant > 0)

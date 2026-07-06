@@ -17,7 +17,7 @@
         <div class="r5-fila" style="flex-wrap: wrap;">
             <div class="r5-campo" style="min-width: 170px;">
                 <label for="almDestEnv">Almacén destino</label>
-                <input id="almDestEnv" class="r5-input r5-input--numero" type="number" inputmode="numeric"
+                <input id="almDestEnv" class="r5-input r5-input--numero" type="text" inputmode="numeric"
                        min="1" max="999" @bind="_codAlmDest" @bind:after="ValidarDestinoAsync" />
             </div>
             <span class="r5-texto-suave" style="align-self: flex-end; padding-bottom: 14px;">@_descAlmDest</span>

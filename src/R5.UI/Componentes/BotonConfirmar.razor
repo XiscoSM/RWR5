@@ -1,18 +1,23 @@
 @* Acción irreversible en dos pasos, inline: primer toque muestra la pregunta,
    el segundo ejecuta. Estándar de la app para registrar/finalizar/vaciar —
-   evita el registro accidental con guantes sin el coste de un diálogo modal. *@
+   evita el registro accidental con guantes sin el coste de un diálogo modal.
+   Sin conexión se bloquea aquí (un solo sitio cubre todos los registros): un
+   registro no puede completarse contra el servidor sin red. *@
+@implements IDisposable
+@inject IEstadoRed EstadoRed
 
 @if (!_confirmando)
 {
     <button class="r5-btn @(Peligro ? "r5-btn--peligro" : "r5-btn--primario")"
-            @onclick="() => _confirmando = true" disabled="@(Ocupado || Deshabilitado)">
+            title="@(SinRed ? "Sin conexión: no se puede registrar" : null)"
+            @onclick="() => _confirmando = true" disabled="@(Ocupado || Deshabilitado || SinRed)">
         @Texto
     </button>
 }
 else
 {
     <span class="r5-texto-suave">@Pregunta</span>
-    <button class="r5-btn r5-btn--primario" @onclick="ConfirmarAsync" disabled="@Ocupado">
+    <button class="r5-btn r5-btn--primario" @onclick="ConfirmarAsync" disabled="@(Ocupado || SinRed)">
         @(Ocupado ? TextoOcupado : "Sí")
     </button>
     <button class="r5-btn r5-btn--fantasma" @onclick="() => _confirmando = false" disabled="@Ocupado">No</button>
@@ -37,10 +42,17 @@ else
     [Parameter, EditorRequired] public EventCallback OnConfirmar { get; set; }
 
     private bool _confirmando;
+    private bool SinRed => !EstadoRed.HayInternet;
+
+    protected override void OnInitialized() => EstadoRed.CambioConectividad += AlCambiarConectividad;
+
+    private void AlCambiarConectividad(object? s, bool hayInternet) => InvokeAsync(StateHasChanged);
 
     private async Task ConfirmarAsync()
     {
         await OnConfirmar.InvokeAsync();
         _confirmando = false;
     }
+
+    public void Dispose() => EstadoRed.CambioConectividad -= AlCambiarConectividad;
 }

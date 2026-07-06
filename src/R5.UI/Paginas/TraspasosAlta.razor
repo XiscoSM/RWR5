@@ -35,7 +35,7 @@
             <h3>Almacén de destino</h3>
             <div class="r5-campo">
                 <label for="almDestino">Número de almacén</label>
-                <input id="almDestino" class="r5-input r5-input--numero" type="number" inputmode="numeric"
+                <input id="almDestino" class="r5-input r5-input--numero" type="text" inputmode="numeric"
                        min="1" max="999" @bind="_codAlmDest" @bind:event="oninput" autofocus disabled="@_ocupado" />
             </div>
             <Aviso Mensaje="@(_tipoAviso == "error" ? _aviso : "")" />

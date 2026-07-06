@@ -52,12 +52,12 @@
         <h2>Terminal</h2>
         <div class="r5-campo">
             <label for="terminal">Número de terminal (1-254)</label>
-            <input id="terminal" class="r5-input r5-input--numero" type="number" inputmode="numeric"
+            <input id="terminal" class="r5-input r5-input--numero" type="text" inputmode="numeric"
                    min="1" max="254" @bind="_numTerminal" />
         </div>
         <div class="r5-campo">
             <label for="puertoBalanza">Puerto COM de la báscula (0 = sin báscula; solo Windows)</label>
-            <input id="puertoBalanza" class="r5-input r5-input--numero" type="number" inputmode="numeric"
+            <input id="puertoBalanza" class="r5-input r5-input--numero" type="text" inputmode="numeric"
                    min="0" max="99" @bind="_puertoBalanza" />
         </div>
     </section>
@@ -79,7 +79,7 @@
 
         <div class="r5-campo">
             <label for="idHard">Id de hardware (IdHard)</label>
-            <input id="idHard" class="r5-input r5-input--numero" type="number" inputmode="numeric"
+            <input id="idHard" class="r5-input r5-input--numero" type="text" inputmode="numeric"
                    @bind="_idHard" />
         </div>
 
