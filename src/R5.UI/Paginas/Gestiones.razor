@@ -184,6 +184,32 @@
             </div>
         }
 
+        @if (_enviandoMailDe is not null)
+        {
+            @* Copia de la firma por mail: texto informativo RGPD y dirección editable
+               (el BEnvioMail de R3, con el mismo aviso legal). *@
+            <form class="r5-tarjeta r5-columna r5-ancho-form" @onsubmit="EnviarMailFirmaAsync">
+                <h3>Enviar copia de la firma por email</h3>
+                <p class="r5-texto-suave r5-texto-sm">
+                    De acuerdo con el Reglamento (UE) 2016/679 (RGPD) y la Ley Orgánica 3/2018 (LOPDGDD),
+                    su dirección de correo se utilizará exclusivamente para el envío de comunicaciones
+                    relacionadas con la gestión solicitada u otras aceptaciones que haya autorizado.
+                </p>
+                <div class="r5-campo">
+                    <label for="mailFirma">Dirección de email</label>
+                    <input id="mailFirma" class="r5-input" type="email" maxlength="60"
+                           @bind="_mailFirma" disabled="@_ocupado" />
+                </div>
+                <div class="r5-fila">
+                    <button type="submit" class="r5-btn r5-btn--primario"
+                            disabled="@(_ocupado || !_mailFirma.Contains('@'))">
+                        @(_ocupado ? "Enviando…" : "Aceptar y enviar")
+                    </button>
+                    <button type="button" class="r5-btn r5-btn--fantasma" @onclick="() => _enviandoMailDe = null">Cancelar</button>
+                </div>
+            </form>
+        }
+
         @if (_cargando)
         {
             <Cargando Texto="Cargando gestiones…" />
@@ -231,6 +257,14 @@
                             {
                                 <button class="r5-btn r5-btn--primario" @onclick="() => AbrirFirma(gestion)" disabled="@_ocupado">
                                     Firmar
+                                </button>
+                            }
+                            @* Copia de la firma por mail (RGPD): solo gestiones PROPIAS
+                               firmadas con EnvioMail activo, como el BEnvioMail de R3. *@
+                            @if (_vista == 1 && gestion.EnvioMail)
+                            {
+                                <button class="r5-btn r5-btn--secundario r5-btn--sm" @onclick="() => AbrirMailFirma(gestion)" disabled="@_ocupado">
+                                    Mail
                                 </button>
                             }
                         </span>
@@ -470,6 +504,42 @@
         _firmando = gestion;
         _numFirma = null;
         _aviso = "";
+    }
+
+    // ---- Copia de la firma por mail (RGPD, BEnvioMail de R3) ----
+    private GestionEmpresaUser? _enviandoMailDe;
+    private string _mailFirma = "";
+
+    private void AbrirMailFirma(GestionEmpresaUser gestion)
+    {
+        // Solo gestiones propias, como R3 ("Solamente… gestión propia").
+        if (_empleado is null || gestion.Usuario != _empleado.Empleado)
+        {
+            MostrarError("Solamente se permite enviar el mail de una gestión propia.");
+            return;
+        }
+        _enviandoMailDe = gestion;
+        _mailFirma = gestion.Mail;
+        _aviso = "";
+    }
+
+    private async Task EnviarMailFirmaAsync()
+    {
+        if (_ocupado || _enviandoMailDe is null || !_mailFirma.Contains('@')) return;
+        _ocupado = true;
+        _aviso = "";
+        try
+        {
+            var r = await ServicioGestiones.EnviarMailFirmaAsync(_enviandoMailDe.Mov, _mailFirma.Trim());
+            if (!r.Ok) { MostrarError(r.Error); return; }
+            _tipoAviso = "exito";
+            _aviso = $"Envío en cola: recibirá la copia de la firma en {_mailFirma.Trim()} en breve.";
+            _enviandoMailDe = null;
+        }
+        finally
+        {
+            _ocupado = false;
+        }
     }
 
     private async Task ConfirmarFirmaAsync()

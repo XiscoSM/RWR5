@@ -40,4 +40,9 @@ public sealed class GestionesService
     /// <summary>POST Gestiones/Solicitud — alta de solicitud (EPI, vacaciones, Madisa…).</summary>
     public Task<ApiRespuesta> SolicitarAsync(GestionSolicitudInsertDTO solicitud, CancellationToken ct = default)
         => _api.PostAsync("Gestiones/Solicitud", solicitud, ct);
+
+    /// <summary>POST Gestiones/Mov/{mov}/ColaMail?toMail= — encola la copia de la firma
+    /// por mail (RGPD). Solo gestiones propias con EnvioMail activo, como en R3.</summary>
+    public Task<ApiRespuesta> EnviarMailFirmaAsync(int mov, string toMail, CancellationToken ct = default)
+        => _api.PostAsync($"Gestiones/Mov/{mov}/ColaMail?toMail={Uri.EscapeDataString(toMail)}", cuerpo: null, ct);
 }
