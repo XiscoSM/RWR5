@@ -1,0 +1,229 @@
+@* Picking de pedido WEB: recorrido por ubicación línea a línea. Cada línea se
+   confirma con la cantidad preparada (menos que lo pedido = falta; el cliente
+   puede admitir sustitutivos). Al terminar, Registrar cierra la preparación. *@
+@page "/preparacionWww/{FechaRuta}/{Pedido:int}"
+@inject PreparacionWwwService Preparaciones
+@inject SesionUsuario Sesion
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<GuardiaModulo CodMenu="24">
+<div class="r5-columna">
+
+    <div class="r5-fila" style="flex-wrap: wrap;">
+        <button class="r5-btn r5-btn--secundario" @onclick="Volver">← Pedidos web</button>
+        <h2>Pedido web @Pedido</h2>
+        @if (_cabecera is not null)
+        {
+            <span class="r5-chip r5-chip--suave">
+                @_cabecera.Preparados preparados · @_cabecera.Pendientes pendientes
+            </span>
+        }
+        <div class="r5-fila" style="margin-left:auto">
+            <BotonConfirmar Texto="Registrar"
+                            Pregunta="@($"¿Registrar la preparación del pedido web {Pedido}? No se puede deshacer.")"
+                            TextoOcupado="Registrando…" Ocupado="@_ocupado"
+                            Deshabilitado="@(_cabecera is null)"
+                            OnConfirmar="RegistrarAsync" />
+        </div>
+    </div>
+
+    <Aviso Tipo="@_tipoAviso" Mensaje="@_aviso" />
+
+    @if (_fecha is null)
+    {
+        <Aviso Mensaje="La fecha del pedido no es válida." />
+    }
+    else if (_cargando)
+    {
+        <Cargando Texto="Buscando siguiente línea…" />
+    }
+    else if (_linea is null && _tipoAviso != "error")
+    {
+        <div class="r5-cargando">
+            <Icono Nombre="ok" Clase="r5-modulo__icono" />
+            <span>No quedan líneas pendientes en el recorrido. Puedes Registrar.</span>
+        </div>
+    }
+    else if (_linea is null)
+    {
+        <div class="r5-fila">
+            <button class="r5-btn r5-btn--secundario" @onclick="() => SiguienteAsync(0, 0)">Reintentar</button>
+        </div>
+    }
+    else
+    {
+        <div class="r5-tarjeta r5-columna">
+            <div class="r5-fila">
+                <span class="r5-chip" style="background: var(--c-primario-claro); color: var(--c-primario-osc); font-size: var(--texto-lg);">
+                    Ubicación @_linea.Ubicacion
+                </span>
+                <div class="r5-ficha__identidad">
+                    <span class="r5-ficha__codigo">@_linea.Prod.CodProd</span>
+                    <span class="r5-ficha__nombre">@_linea.Prod.DescProd</span>
+                </div>
+            </div>
+
+            <dl class="r5-datos">
+                <div><dt>Pedida</dt><dd>@Cantidad(_linea.CantPed, _linea.Prod.DecimalesEnCant)</dd></div>
+                <div><dt>Ya preparada</dt><dd>@Cantidad(_linea.CantPrep, _linea.Prod.DecimalesEnCant)</dd></div>
+                @if (_linea.Prod.Stock is not null)
+                {
+                    <div><dt>Stock</dt><dd>@Cantidad(_linea.Prod.Stock.Value, _linea.Prod.DecimalesEnCant)</dd></div>
+                }
+            </dl>
+
+            <div class="r5-campo">
+                <label for="cantPrepWww">Cantidad preparada</label>
+                <input id="cantPrepWww" class="r5-input r5-input--numero" type="number" inputmode="decimal"
+                       step="@(_linea.Prod.DecimalesEnCant ? "0.001" : "1")" min="0"
+                       @bind="_cantidad" @bind:event="oninput" />
+                <span class="r5-texto-suave r5-texto-sm">Menos que lo pedido = falta (el pedido lo refleja al cliente).</span>
+            </div>
+
+            <div class="r5-fila">
+                <button class="r5-btn r5-btn--secundario" @onclick="AnteriorAsync" disabled="@_ocupado">← Anterior</button>
+                <button class="r5-btn r5-btn--primario" style="flex:1" @onclick="ConfirmarAsync"
+                        disabled="@(_ocupado || _cantidad < 0)">
+                    @(_ocupado ? "Guardando…" : $"Confirmar {Cantidad(_cantidad, _linea.Prod.DecimalesEnCant)} y seguir →")
+                </button>
+                <button class="r5-btn r5-btn--fantasma" @onclick="() => SiguienteAsync(_linea.Prod.CodProd, _linea.Ubicacion)"
+                        disabled="@_ocupado">Saltar →</button>
+            </div>
+        </div>
+    }
+</div>
+</GuardiaModulo>
+
+@code {
+    [Parameter] public string FechaRuta { get; set; } = "";
+    [Parameter] public int Pedido { get; set; }
+
+    private DateTime? _fecha;
+    private CabPreparacionWww? _cabecera;
+    private LinPreparacionWww? _linea;
+    private decimal _cantidad;
+    private bool _cargando = true;
+    private bool _ocupado;
+    private string _aviso = "";
+    private string _tipoAviso = "error";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!DateTime.TryParseExact(FechaRuta, "yyyy-MM-dd", null,
+            System.Globalization.DateTimeStyles.None, out var fecha))
+        {
+            _fecha = null;
+            _cargando = false;
+            return;
+        }
+        _fecha = fecha;
+        await RefrescarCabeceraAsync();
+        await SiguienteAsync(0, 0);
+    }
+
+    private async Task RefrescarCabeceraAsync()
+    {
+        if (_fecha is null || !Sesion.Autenticado) return;
+        var cab = await Preparaciones.GetAsync(Pedido, Sesion.Usuario!.Almacen.CodAlm, _fecha.Value);
+        if (cab.Ok && cab.Datos is not null) _cabecera = cab.Datos;
+    }
+
+    private async Task SiguienteAsync(int codProdActual, int ubicacion)
+    {
+        if (_fecha is null || !Sesion.Autenticado) return;
+        _cargando = true;
+        _aviso = "";
+        try
+        {
+            var r = await Preparaciones.GetLineaSiguienteAsync(Pedido, Sesion.Usuario!.Almacen.CodAlm,
+                _fecha.Value, Sesion.Usuario.CodUsuario, codProdActual, ubicacion);
+            if (!r.Ok) { MostrarError(r.Error); _linea = null; return; }
+            _linea = r.Datos is { Prod.CodProd: > 0 } ? r.Datos : null;
+            if (_linea is not null)
+                _cantidad = _linea.CantPrep > 0 ? _linea.CantPrep : _linea.CantPed;
+        }
+        finally
+        {
+            _cargando = false;
+            StateHasChanged();
+            await JS.InvokeVoidAsync("r5.seleccionar", "cantPrepWww");
+        }
+    }
+
+    private async Task AnteriorAsync()
+    {
+        if (_fecha is null || _linea is null || !Sesion.Autenticado) return;
+        _cargando = true;
+        _aviso = "";
+        try
+        {
+            var r = await Preparaciones.GetLineaAnteriorAsync(Pedido, Sesion.Usuario!.Almacen.CodAlm,
+                _fecha.Value, Sesion.Usuario.CodUsuario, _linea.Prod.CodProd, _linea.Ubicacion, todos: true);
+            if (!r.Ok) { MostrarError(r.Error); return; }
+            if (r.Datos is { Prod.CodProd: > 0 })
+            {
+                _linea = r.Datos;
+                _cantidad = _linea.CantPrep > 0 ? _linea.CantPrep : _linea.CantPed;
+            }
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    // Graba la cantidad preparada de la línea y avanza a la siguiente.
+    private async Task ConfirmarAsync()
+    {
+        if (_ocupado || _fecha is null || _linea is null || _cantidad < 0 || !Sesion.Autenticado) return;
+
+        // Tope de sanidad anti-escaneo en el campo cantidad.
+        if (_cantidad >= 10000) { MostrarError($"Cantidad {_cantidad} no valida: ¿has escaneado un codigo en el campo de cantidad?"); return; }
+
+        _ocupado = true;
+        _aviso = "";
+        try
+        {
+            var r = await Preparaciones.PostCantidadPreparadaAsync(Pedido, Sesion.Usuario!.Almacen.CodAlm,
+                _fecha.Value, _linea.Prod.CodProd, _cantidad);
+            if (!r.Ok) { MostrarError(r.Error); return; }
+
+            _tipoAviso = "exito";
+            _aviso = $"{_linea.Prod.DescProd}: {Cantidad(_cantidad, _linea.Prod.DecimalesEnCant)} preparado.";
+            int prodActual = _linea.Prod.CodProd;
+            int ubicacion = _linea.Ubicacion;
+            await RefrescarCabeceraAsync();
+            await SiguienteAsync(prodActual, ubicacion);
+        }
+        finally
+        {
+            _ocupado = false;
+        }
+    }
+
+    private async Task RegistrarAsync()
+    {
+        if (_ocupado || _fecha is null || !Sesion.Autenticado) return;
+        _ocupado = true;
+        try
+        {
+            var r = await Preparaciones.RegistrarAsync(Pedido, _fecha.Value,
+                Sesion.Usuario!.Almacen.CodAlm, Sesion.Usuario.CodUsuario);
+            if (!r.Ok) { MostrarError(r.Error); return; }
+            Nav.NavigateTo("/preparacionWww");
+        }
+        finally
+        {
+            _ocupado = false;
+        }
+    }
+
+    private void MostrarError(string mensaje)
+    {
+        _tipoAviso = "error";
+        _aviso = mensaje;
+    }
+
+    private void Volver() => Nav.NavigateTo("/preparacionWww");
+}

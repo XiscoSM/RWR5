@@ -1,0 +1,88 @@
+@* Preparación de pedidos WEB (tienda online): lista de pedidos a preparar del
+   almacén con sus contadores; entrar asigna el pedido al preparador y abre el
+   picking. Mismo permiso de módulo que la preparación de central (24). *@
+@page "/preparacionWww"
+@inject PreparacionWwwService Preparaciones
+@inject SesionUsuario Sesion
+@inject NavigationManager Nav
+
+<GuardiaModulo CodMenu="24">
+<div class="r5-columna">
+
+    <div class="r5-fila">
+        <button class="r5-btn r5-btn--secundario" @onclick='() => Nav.NavigateTo("/preparacion")'>← Preparación</button>
+        <h2>Pedidos web</h2>
+        <button class="r5-btn r5-btn--fantasma" style="margin-left:auto" @onclick="CargarAsync" disabled="@_cargando">Actualizar</button>
+    </div>
+
+    @if (_cargando)
+    {
+        <Cargando Texto="Cargando pedidos web…" />
+    }
+    else if (!string.IsNullOrEmpty(_error))
+    {
+        <Aviso Mensaje="@_error" OnReintentar="CargarAsync" Reintentando="_cargando" />
+    }
+    else if (_pedidos.Count == 0)
+    {
+        <div class="r5-cargando">
+            <Icono Nombre="preparacion" Clase="r5-modulo__icono" />
+            <span>No hay pedidos web pendientes de preparar en este almacén.</span>
+        </div>
+    }
+    else
+    {
+        <div class="r5-docs">
+            @foreach (var p in _pedidos)
+            {
+                <button @key="@($"{p.Fecha:yyyyMMdd}-{p.Pedido}")" class="r5-doc" @onclick="() => AbrirAsync(p)">
+                    <Icono Nombre="preparacion" Clase="r5-modulo__icono" />
+                    <span class="r5-doc__principal">
+                        <span class="r5-doc__titulo">Pedido web @p.Pedido · Cliente @p.Cliente.NumCliente</span>
+                        <span class="r5-doc__detalle">
+                            @Fecha(p.Fecha) · @p.Prods productos
+                            @(p.Cliente.ProdSust ? " · admite sustitutivos" : "")
+                        </span>
+                    </span>
+                    <span class="r5-doc__derecha">
+                        <span class="r5-doc__detalle">@p.Preparados preparados · @p.Pendientes pendientes</span>
+                    </span>
+                </button>
+            }
+        </div>
+    }
+</div>
+</GuardiaModulo>
+
+@code {
+    private List<CabPreparacionWww> _pedidos = new();
+    private bool _cargando = true;
+    private string _error = "";
+
+    protected override Task OnInitializedAsync() => CargarAsync();
+
+    private async Task CargarAsync()
+    {
+        if (!Sesion.Autenticado) return;
+        _cargando = true;
+        _error = "";
+        try
+        {
+            var r = await Preparaciones.GetListaAsync(Sesion.Usuario!.Almacen.CodAlm, Sesion.Usuario.CodUsuario);
+            if (!r.Ok) { _error = r.Error; _pedidos = new(); return; }
+            _pedidos = r.Datos ?? new();
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    // Entrar asigna el pedido al preparador (idempotente, como la preparación de central).
+    private async Task AbrirAsync(CabPreparacionWww p)
+    {
+        var r = await Preparaciones.AsignarAsync(p.Pedido, Sesion.Usuario!.Almacen.CodAlm, p.Fecha, Sesion.Usuario.CodUsuario);
+        if (!r.Ok) { _error = r.Error; return; }
+        Nav.NavigateTo($"/preparacionWww/{p.Fecha:yyyy-MM-dd}/{p.Pedido}");
+    }
+}

@@ -53,6 +53,57 @@
 
     <Aviso Tipo="@_tipoAviso" Mensaje="@_aviso" />
 
+    @* Controles del recorrido de R3: ver todas las líneas (no solo pendientes),
+       saltar a un pasillo concreto y añadir un producto no incluido en el pedido. *@
+    <div class="r5-fila" style="flex-wrap: wrap;">
+        <label class="r5-fila" style="gap: var(--esp-2); cursor: pointer;">
+            <input type="checkbox" checked="@_verTodos" @onchange="ToggleVerTodosAsync" />
+            <span class="r5-texto-suave">Ver todas las líneas (no solo pendientes)</span>
+        </label>
+        <button class="r5-btn r5-btn--fantasma" @onclick="TogglePasillosAsync" disabled="@_ocupado">
+            @(_verPasillos ? "Ocultar pasillos" : "Pasillos")
+        </button>
+        <button class="r5-btn r5-btn--fantasma" @onclick="() => _verProdNuevo = !_verProdNuevo">
+            + Producto no incluido
+        </button>
+    </div>
+
+    @if (_verPasillos && _pasillos.Count > 0)
+    {
+        <div class="r5-fila" style="flex-wrap: wrap;">
+            @foreach (var p in _pasillos)
+            {
+                <button @key="p.Pasillo" class="r5-btn r5-btn--secundario" @onclick="() => IrAPasilloAsync(p)">
+                    Pasillo @p.Pasillo · @p.CountProdPreparados/@p.CountProdPedidos
+                </button>
+            }
+        </div>
+    }
+
+    @if (_verProdNuevo)
+    {
+        <form class="r5-tarjeta r5-columna r5-ancho-form" @onsubmit="AnadirProdNuevoAsync">
+            <h3>Añadir producto no incluido en el pedido</h3>
+            <div class="r5-fila">
+                <div class="r5-campo" style="flex:1">
+                    <label for="prodNuevo">Código de producto</label>
+                    <input id="prodNuevo" class="r5-input r5-input--numero" type="text" inputmode="numeric"
+                           @bind="_prodNuevoTexto" disabled="@_ocupado" />
+                </div>
+                <div class="r5-campo" style="flex:1">
+                    <label for="cantNueva">Cantidad pedida</label>
+                    <input id="cantNueva" class="r5-input r5-input--numero" type="number" inputmode="decimal" min="0.001" step="0.001"
+                           @bind="_cantNueva" disabled="@_ocupado" />
+                </div>
+            </div>
+            <div class="r5-fila">
+                <button type="submit" class="r5-btn r5-btn--secundario"
+                        disabled="@(_ocupado || string.IsNullOrWhiteSpace(_prodNuevoTexto) || _cantNueva <= 0)">Añadir al pedido</button>
+                <button type="button" class="r5-btn r5-btn--fantasma" @onclick="() => _verProdNuevo = false">Cancelar</button>
+            </div>
+        </form>
+    }
+
     @if (_fecha is null)
     {
         <Aviso Mensaje="La fecha del pedido no es válida." />
@@ -186,7 +237,7 @@
         {
             var usuario = Sesion.Usuario!;
             var respuesta = await Preparaciones.GetLineaSiguienteAsync(
-                _fecha.Value, Pedido, usuario.CodUsuario, usuario.Almacen.SoloConStock, codProdActual, ubicacion);
+                _fecha.Value, Pedido, usuario.CodUsuario, usuario.Almacen.SoloConStock, codProdActual, ubicacion, _verTodos);
             if (!respuesta.Ok) { MostrarError(respuesta.Error); return; }
 
             if (respuesta.Datos is null || respuesta.Datos.Prod.CodProd <= 0)
@@ -215,7 +266,7 @@
             var usuario = Sesion.Usuario!;
             var respuesta = await Preparaciones.GetLineaAnteriorAsync(
                 _fecha.Value, Pedido, usuario.CodUsuario, usuario.Almacen.SoloConStock,
-                _linea.Prod.CodProd, _linea.Prod.Ubicacion);
+                _linea.Prod.CodProd, _linea.Prod.Ubicacion, _verTodos);
             if (!respuesta.Ok) { MostrarError(respuesta.Error); return; }
             if (respuesta.Datos is not null && respuesta.Datos.Prod.CodProd > 0) PrepararLinea(respuesta.Datos);
         }
@@ -224,6 +275,80 @@
             _cargando = false;
             StateHasChanged();
             if (_linea is not null) await JS.InvokeVoidAsync("r5.seleccionar", "escaneoPicking");
+        }
+    }
+
+    // ---- Controles del recorrido de R3 (ver todos / pasillos / producto nuevo) ----
+    private bool _verTodos;
+    private bool _verPasillos;
+    private List<PrepPedCentralPasillo> _pasillos = new();
+    private bool _verProdNuevo;
+    private string _prodNuevoTexto = "";
+    private decimal _cantNueva = 1;
+
+    // Alternar todos/pendientes reinicia el recorrido con el nuevo criterio.
+    private async Task ToggleVerTodosAsync(ChangeEventArgs e)
+    {
+        _verTodos = e.Value is bool b && b;
+        await SiguienteAsync(0, "0");
+    }
+
+    private async Task TogglePasillosAsync()
+    {
+        if (_verPasillos) { _verPasillos = false; return; }
+        if (_fecha is null || !Sesion.Autenticado) return;
+        var usuario = Sesion.Usuario!;
+        var r = await Preparaciones.GetPasillosAsync(_fecha.Value, Pedido, usuario.CodUsuario,
+            usuario.Almacen.SoloConStock, usuario.Almacen.NumDigitosPasillo);
+        if (!r.Ok) { MostrarError(r.Error); return; }
+        _pasillos = r.Datos ?? new();
+        _verPasillos = _pasillos.Count > 0;
+        if (!_verPasillos) MostrarError("El pedido no tiene pasillos con líneas.");
+    }
+
+    // Saltar al primer producto del pasillo: se reposiciona el recorrido en su ubicación.
+    private async Task IrAPasilloAsync(PrepPedCentralPasillo p)
+    {
+        _verPasillos = false;
+        await SiguienteAsync(0, p.Pasillo);
+    }
+
+    // Alta de producto no incluido en el pedido (PROC_PedidoCentralLin_InsertNuevo de R3).
+    private async Task AnadirProdNuevoAsync()
+    {
+        if (_ocupado || _fecha is null || _cabecera is null || !Sesion.Autenticado) return;
+        if (!int.TryParse(_prodNuevoTexto.Trim(), out int codProd) || codProd <= 0)
+        { MostrarError("Código de producto no válido."); return; }
+        if (_cantNueva <= 0 || _cantNueva >= 10000) { MostrarError("Cantidad no válida."); return; }
+
+        _ocupado = true;
+        _aviso = "";
+        try
+        {
+            var usuario = Sesion.Usuario!;
+            var r = await Preparaciones.PostLineaNuevaAsync(new PrepPedCentralLinInsertDTO
+            {
+                CodProd = codProd,
+                CodUsuario = usuario.CodUsuario,
+                CodAlm = _cabecera.Alm.CodAlm,
+                CodAlmCentral = usuario.Almacen.CodAlm,
+                CantPedida = _cantNueva,
+                Fecha = _fecha.Value,
+                NumPedido = Pedido
+            });
+            if (!r.Ok) { MostrarError(r.Error); return; }
+
+            _tipoAviso = "exito";
+            _aviso = $"Producto {codProd} añadido al pedido con {Cantidad(_cantNueva, true)}.";
+            _verProdNuevo = false;
+            _prodNuevoTexto = "";
+            _cantNueva = 1;
+            // El recorrido se reinicia para que la línea nueva entre en él.
+            await SiguienteAsync(0, "0");
+        }
+        finally
+        {
+            _ocupado = false;
         }
     }
 

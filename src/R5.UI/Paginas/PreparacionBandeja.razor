@@ -14,6 +14,10 @@
             <button class="@(!_verCerrados ? "activo" : "")" aria-pressed="@(!_verCerrados)" @onclick="() => CambiarVistaAsync(false)" disabled="@_cargando">Mis preparaciones</button>
             <button class="@(_verCerrados ? "activo" : "")" aria-pressed="@_verCerrados" @onclick="() => CambiarVistaAsync(true)" disabled="@_cargando">Pedidos cerrados</button>
         </div>
+        @* Pedidos de la tienda online: flujo propio (api/PreparacionWww). *@
+        <button class="r5-btn r5-btn--secundario" @onclick='() => Nav.NavigateTo("/preparacionWww")'>
+            Pedidos web →
+        </button>
         @* El pool cambia según trabajan otros preparadores: refresco manual para no
            quedarse con una foto vieja (la lista no se auto-actualiza). *@
         <button class="r5-btn r5-btn--fantasma" style="margin-left:auto" @onclick="CargarAsync" disabled="@_cargando">

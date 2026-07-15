@@ -57,4 +57,14 @@ public sealed class PreparacionService
     /// <summary>POST .../Finalizar/{codUsuario} — finaliza el pedido (estado preparado).</summary>
     public Task<ApiRespuesta> FinalizarAsync(DateTime fecha, int pedido, short codUsuario, CancellationToken ct = default)
         => _api.PostAsync($"PrepPedCentral/{pedido}/{fecha:yyyy-MM-dd}/Finalizar/{codUsuario}", cuerpo: null, ct);
+
+    /// <summary>GET .../Pasillos — pasillos del recorrido con pedidos/preparados por pasillo.</summary>
+    public Task<ApiRespuesta<List<PrepPedCentralPasillo>>> GetPasillosAsync(DateTime fecha, int pedido, short codUsuario, bool soloConStock, byte numDigitosPasillo, CancellationToken ct = default)
+        => _api.GetAsync<List<PrepPedCentralPasillo>>(
+            $"PrepPedCentral/{fecha:yyyy-MM-dd}/{pedido}/Pasillos?codUsuario={codUsuario}&soloConStock={soloConStock}&numDigitosPasillo={numDigitosPasillo}", ct);
+
+    /// <summary>POST PrepPedCentral/{pedido}/{fecha}/{prod} — añade al pedido un producto
+    /// que no estaba incluido (alta durante la preparación, como R3).</summary>
+    public Task<ApiRespuesta<PrepPedCentralLin>> PostLineaNuevaAsync(PrepPedCentralLinInsertDTO linea, CancellationToken ct = default)
+        => _api.PostAsync<PrepPedCentralLin>($"PrepPedCentral/{linea.NumPedido}/{linea.Fecha:yyyy-MM-dd}/{linea.CodProd}", linea, ct);
 }

@@ -1,5 +1,26 @@
 namespace R5.Core.Entidades;
 
+/// <summary>Pasillo del recorrido de preparación (canon R4): permite saltar el picking
+/// al primer producto de un pasillo concreto.</summary>
+public sealed class PrepPedCentralPasillo
+{
+    public string Pasillo { get; set; } = "";
+    public int CountProdPedidos { get; set; }
+    public int CountProdPreparados { get; set; }
+}
+
+/// <summary>Alta de producto NO incluido en el pedido durante la preparación (canon R4).</summary>
+public sealed class PrepPedCentralLinInsertDTO
+{
+    public int CodProd { get; set; }
+    public int CodUsuario { get; set; }
+    public short CodAlm { get; set; }
+    public short CodAlmCentral { get; set; }
+    public decimal CantPedida { get; set; }
+    public DateTime Fecha { get; set; }
+    public int NumPedido { get; set; }
+}
+
 /// <summary>Preparación de pedidos de central (cabecera, canon R4).</summary>
 public sealed class PrepPedCentral
 {
