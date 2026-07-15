@@ -287,31 +287,53 @@ h3 { font-size: var(--texto-lg); }
 
 /* ---------- Inicio: rejilla de módulos ---------- */
 /* Lanzador: una fila por familia, separadas por línea. Teselas grandes (táctil, 1024×768).
-   Alineadas a la izquierda: los iconos forman columnas (misma columna en todas las filas). */
+   Alineadas a la izquierda: los iconos forman columnas (misma columna en todas las filas).
+   La rejilla llena TODA la altura del área de contenido: las filas reparten el alto por
+   igual y las teselas (icono + texto) escalan con la pantalla (clamp con vh/vw), de modo
+   que no sobra espacio abajo ni en pantallas grandes. Sin scroll. */
+.r5-contenido:has(.r5-modulos) {
+    display: flex;
+    overflow: hidden;
+}
+
 .r5-modulos {
-    max-width: 696px;
-    margin: 0 auto;
+    flex: 0 1 auto;
+    min-height: 0;
+    width: fit-content;         /* el contenedor mide lo que el contenido... */
+    max-width: 100%;
+    margin: 0 auto;             /* ...y se centra en la pantalla (bloque centrado) */
     display: flex;
     flex-direction: column;
+    /* Cada fila se encoge a su contenido: así la línea divisoria termina en el último
+       módulo de la familia y se adapta si se añade o quita un módulo. */
+    align-items: flex-start;
+    /* Separación entre secciones: además del reparto por flex, un hueco fijo que crece
+       con la altura para diferenciar bien cada familia. */
+    gap: clamp(var(--esp-3), 3vh, var(--esp-8));
 }
 
 .r5-modulos__fila {
+    flex: 1 1 0;                 /* cada familia se lleva la misma porción de alto */
+    min-height: 0;
     display: flex;
     flex-wrap: wrap;
+    align-items: stretch;        /* las teselas estiran al alto de la banda */
     justify-content: flex-start;
-    gap: var(--esp-6);
-    padding: var(--esp-2) 0;
+    gap: clamp(var(--esp-4), 2.5vw, var(--esp-8));
+    padding-bottom: clamp(var(--esp-2), 1.6vh, var(--esp-4));
     border-bottom: 0.5px solid var(--c-borde);
 }
 
-.r5-modulos__fila:last-child { border-bottom: none; }
+.r5-modulos__fila:last-child { border-bottom: none; padding-bottom: 0; }
 
 .r5-modulo {
+    height: 100%;               /* ocupa todo el alto de la banda para escalar el icono */
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: var(--esp-2);
-    width: 150px;
+    justify-content: center;
+    gap: clamp(var(--esp-1), 1vh, var(--esp-3));
+    width: clamp(140px, 15vh, 210px);
     background: none;
     border: none;
     padding: 0;
@@ -319,25 +341,31 @@ h3 { font-size: var(--texto-lg); }
     cursor: pointer;
 }
 
-/* Icono redondeado de color (estilo iOS): el glifo va en blanco dentro del squircle. */
+/* Icono en cuadrado redondeado con tinte suave de la familia; el glifo hereda el color.
+   Su alto se liga a la banda (porcentaje) y se mantiene cuadrado con aspect-ratio: así
+   crece para llenar el espacio disponible y se adapta a cualquier tamaño de pantalla. */
 .r5-modulo__sq {
-    width: 86px;
-    height: 86px;
+    height: clamp(78px, 74%, 168px);
+    aspect-ratio: 1 / 1;
     border-radius: 24%;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #fff;
-    box-shadow: 0 5px 14px rgba(9, 40, 50, 0.18);
+    flex-shrink: 0;
     transition: transform 0.12s;
 }
 
 .r5-modulo:not(:disabled):active .r5-modulo__sq { transform: scale(0.93); }
 
-.r5-modulo__icono { width: 48px; height: 48px; color: #fff; }
+/* Tamaño por defecto del glifo (clase compartida por estados vacíos, filas de documento,
+   etc.). En la rejilla de inicio se sobreescribe abajo para escalar con el cuadrado. */
+.r5-modulo__icono { width: 48px; height: 48px; color: inherit; }
+
+/* Glifo dentro del cuadrado de inicio: proporcional al cuadrado (que escala con la banda). */
+.r5-modulo__sq .r5-modulo__icono { width: 52%; height: 52%; }
 
 .r5-modulo__label {
-    font-size: var(--texto-md);
+    font-size: clamp(var(--texto-md), 1.9vh, var(--texto-xl));
     font-weight: 500;
     color: var(--c-texto);
     text-align: center;
@@ -347,19 +375,19 @@ h3 { font-size: var(--texto-lg); }
 .r5-modulo:disabled { cursor: default; opacity: 0.4; }
 
 .r5-modulo__pronto {
-    font-size: 0.7rem;
+    font-size: clamp(0.65rem, 1.2vh, 0.8rem);
     font-weight: 600;
     color: var(--c-texto-suave);
     text-transform: uppercase;
     letter-spacing: 0.05em;
 }
 
-/* Color por familia: agrupa de un vistazo. El teal es la marca; el resto solo clasifica. */
-.r5-sq--teal   { background: linear-gradient(160deg, #178394, #0c5c6c); }
-.r5-sq--blue   { background: linear-gradient(160deg, #3f7fe0, #2856b6); }
-.r5-sq--amber  { background: linear-gradient(160deg, #e8992e, #c2731a); }
-.r5-sq--purple { background: linear-gradient(160deg, #8067dd, #5a41ad); }
-.r5-sq--slate  { background: linear-gradient(160deg, #697880, #4a565c); }
+/* Tinte por familia (fondo suave + color del glifo). Agrupa de un vistazo. */
+.r5-sq--teal   { background: #e2f0f2; color: #0c5c6c; }
+.r5-sq--blue   { background: #e6edfb; color: #2856b6; }
+.r5-sq--amber  { background: #fbeddb; color: #b4691a; }
+.r5-sq--purple { background: #ece7fb; color: #5a41ad; }
+.r5-sq--slate  { background: #e9eef0; color: #47555c; }
 
 /* ---------- Login ---------- */
 .r5-login {
@@ -377,43 +405,55 @@ h3 { font-size: var(--texto-lg); }
     background: var(--c-superficie);
     border-radius: 20px;
     box-shadow: 0 24px 60px rgba(4, 24, 30, 0.34);
+    overflow: hidden;               /* la franja teal llega a las esquinas redondeadas */
+    display: flex;
+    flex-direction: column;
+}
+
+/* Cabecera de marca: fila sobre blanco con el monograma a la izquierda y el terminal
+   al lado, separada del formulario por un filete azul a todo el ancho. */
+.r5-login__cabecera {
+    background: var(--c-superficie);
+    padding: var(--esp-5);
+    display: flex;
+    align-items: center;
+    gap: var(--esp-4);
+    border-bottom: 2px solid #2a8aa4;
+}
+
+.r5-login__cuerpo {
     padding: var(--esp-6);
     display: flex;
     flex-direction: column;
     gap: var(--esp-5);
 }
 
-.r5-login__marca {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: var(--esp-3);
-}
-
-/* Icono de la app (mismo lenguaje que el icono real: squircle teal + monograma). */
+/* Monograma de la app (squircle teal, mismo lenguaje que el icono real). */
 .r5-login__icono {
-    width: 66px;
-    height: 66px;
+    width: 50px;
+    height: 50px;
     border-radius: 24%;
     background: linear-gradient(160deg, #1c7793, #093749);
-    box-shadow: 0 8px 20px rgba(4, 24, 30, 0.28);
+    box-shadow: 0 6px 16px rgba(4, 24, 30, 0.20);
     display: flex;
     align-items: center;
     justify-content: center;
     color: #fff;
-    font-size: 31px;
+    font-size: 23px;
     font-weight: 800;
     letter-spacing: -0.06em;
+    flex-shrink: 0;
 }
 
 .r5-login__icono span { position: relative; top: -0.02em; }
 
+/* Pastilla del terminal sobre blanco: teal sobre teal claro. */
 .r5-login__env {
     font-size: var(--texto-sm);
     color: var(--c-primario);
     background: var(--c-primario-claro);
     border-radius: 999px;
-    padding: 4px 12px;
+    padding: 5px 13px;
 }
 
 .r5-login__pie {
@@ -625,5 +665,8 @@ h3 { font-size: var(--texto-lg); }
 .mt-4 { margin-top: var(--esp-4); }
 .mt-5 { margin-top: var(--esp-5); }
 
-/* Escritorio ancho: contenido de formularios acotado para no estirar líneas */
-.r5-ancho-form { max-width: 640px; margin-left: auto; margin-right: auto; }
+/* Escritorio ancho: contenido de formularios acotado para no estirar líneas.
+   width:100% es imprescindible: con márgenes auto dentro de un flex en columna, el
+   navegador NO estira el elemento (los márgenes auto anulan el stretch) y la tarjeta
+   encogía a su contenido, cortando placeholders y campos. */
+.r5-ancho-form { width: 100%; max-width: 640px; margin-left: auto; margin-right: auto; }

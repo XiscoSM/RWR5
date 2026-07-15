@@ -158,9 +158,15 @@
     private bool _registrando;
     private bool _enfocarBuscador;
 
-    // Foco al buscador de producto en cuanto aparece (tras elegir la gama).
+    // Foco directo al buscador de proveedor al entrar (el autofocus de Blazor no dispara
+    // al navegar) y, después, al buscador de producto en cuanto aparece (tras elegir gama).
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (firstRender)
+        {
+            await JS.InvokeVoidAsync("r5.seleccionar", "busquedaProvPed");
+            return;
+        }
         if (_enfocarBuscador)
         {
             _enfocarBuscador = false;

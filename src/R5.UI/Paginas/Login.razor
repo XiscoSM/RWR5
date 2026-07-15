@@ -13,44 +13,46 @@
 
 <div class="r5-login">
     <div class="r5-login__tarjeta">
-        <div class="r5-login__marca">
+        <div class="r5-login__cabecera">
             <div class="r5-login__icono"><span>R5</span></div>
             <span class="r5-login__env">@Config.Entorno · Terminal @Config.NumTerminal</span>
         </div>
 
-        @if (!Credenciales.Enrolado)
-        {
-            <Aviso Tipo="info" Mensaje="Dispositivo sin enrolar. Configura la conexión en Ajustes antes de entrar." />
-        }
+        <div class="r5-login__cuerpo">
+            @if (!Credenciales.Enrolado)
+            {
+                <Aviso Tipo="info" Mensaje="Dispositivo sin enrolar. Configura la conexión en Ajustes antes de entrar." />
+            }
 
-        <form @onsubmit="EntrarAsync">
-            <div class="r5-columna">
-                <div class="r5-campo">
-                    <label for="usuario">Usuario</label>
-                    <input id="usuario" class="r5-input r5-input--numero" type="text" inputmode="numeric"
-                           @bind="_codUsuario" @bind:event="oninput" autofocus disabled="@_validando" />
+            <form @onsubmit="EntrarAsync">
+                <div class="r5-columna">
+                    <div class="r5-campo">
+                        <label for="usuario">Usuario</label>
+                        <input id="usuario" class="r5-input r5-input--numero" type="text" inputmode="numeric"
+                               @bind="_codUsuario" @bind:event="oninput" autofocus disabled="@_validando" />
+                    </div>
+
+                    <div class="r5-campo">
+                        <label for="pwd">Contraseña</label>
+                        <input id="pwd" class="r5-input r5-input--numero" type="password" inputmode="numeric"
+                               @bind="_pwd" @bind:event="oninput" disabled="@_validando" />
+                    </div>
+
+                    <Aviso Mensaje="@_error" />
+
+                    <button type="submit" class="r5-btn r5-btn--primario r5-btn--bloque"
+                            disabled="@(_validando || !Credenciales.Enrolado || _codUsuario is null or <= 0 || _pwd is null)">
+                        @(_validando ? "Validando…" : "Entrar")
+                    </button>
                 </div>
+            </form>
 
-                <div class="r5-campo">
-                    <label for="pwd">Contraseña</label>
-                    <input id="pwd" class="r5-input r5-input--numero" type="password" inputmode="numeric"
-                           @bind="_pwd" @bind:event="oninput" disabled="@_validando" />
-                </div>
-
-                <Aviso Mensaje="@_error" />
-
-                <button type="submit" class="r5-btn r5-btn--primario r5-btn--bloque"
-                        disabled="@(_validando || !Credenciales.Enrolado || _codUsuario is null or <= 0 || _pwd is null)">
-                    @(_validando ? "Validando…" : "Entrar")
+            <div class="r5-login__pie">
+                <span>v@(VersionApp)</span>
+                <button class="r5-btn r5-btn--fantasma" @onclick="@(() => Nav.NavigateTo("/ajustes"))">
+                    <Icono Nombre="ajustes" Clase="r5-barra__icono" /> Ajustes
                 </button>
             </div>
-        </form>
-
-        <div class="r5-login__pie">
-            <span>v@(VersionApp)</span>
-            <button class="r5-btn r5-btn--fantasma" @onclick="@(() => Nav.NavigateTo("/ajustes"))">
-                <Icono Nombre="ajustes" Clase="r5-barra__icono" /> Ajustes
-            </button>
         </div>
     </div>
 </div>

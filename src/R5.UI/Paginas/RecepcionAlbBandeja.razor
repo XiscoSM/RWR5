@@ -14,10 +14,15 @@
             <button class="@(!_registrados ? "activo" : "")" aria-pressed="@(!_registrados)" @onclick="() => CambiarFiltroAsync(false)" disabled="@_cargando">Pendientes</button>
             <button class="@(_registrados ? "activo" : "")" aria-pressed="@_registrados" @onclick="() => CambiarFiltroAsync(true)" disabled="@_cargando">Registrados</button>
         </div>
-        <button class="r5-btn r5-btn--primario" style="margin-left:auto"
-                @onclick="@(() => Nav.NavigateTo("/recepcionAlb/alta"))">
-            + Nueva recepción
-        </button>
+        @* Solo arriba cuando hay lista: si está vacía, la acción vive en el estado vacío
+           (si no, saldrían dos botones idénticos en la misma pantalla). *@
+        @if (_albaranes.Count > 0 || !string.IsNullOrEmpty(_error))
+        {
+            <button class="r5-btn r5-btn--primario" style="margin-left:auto"
+                    @onclick="@(() => Nav.NavigateTo("/recepcionAlb/alta"))">
+                + Nueva recepción
+            </button>
+        }
     </div>
 
     @if (!_cargando && string.IsNullOrEmpty(_error) && _albaranes.Count > 0)

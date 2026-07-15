@@ -274,10 +274,16 @@
     private string _aviso = "";
     private string _tipoAviso = "error";
 
-    // Foco al campo de nº de albarán en cuanto aparece (tras elegir gama): el operario
-    // debe teclearlo antes de escanear productos.
+    // Foco directo al buscador de proveedor al entrar (el autofocus de Blazor no dispara
+    // al navegar) y, después, al nº de albarán en cuanto aparece (tras elegir gama): el
+    // operario debe teclearlo antes de escanear productos.
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (firstRender)
+        {
+            await JS.InvokeVoidAsync("r5.seleccionar", "busquedaProv");
+            return;
+        }
         if (_enfocarAlbaran)
         {
             _enfocarAlbaran = false;

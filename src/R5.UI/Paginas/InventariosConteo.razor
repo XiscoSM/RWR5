@@ -107,6 +107,12 @@
         _ = RefrescarLineasAsync(); // muestra lo ya contado en este terminal al entrar
     }
 
+    // Foco directo al escáner al entrar (el autofocus de Blazor no dispara al navegar).
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender) await JS.InvokeVoidAsync("r5.seleccionar", "busquedaConteo");
+    }
+
     // Refresca el log de conteos del terminal sin bloquear el siguiente escaneo.
     private async Task RefrescarLineasAsync()
     {

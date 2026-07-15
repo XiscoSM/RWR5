@@ -4,6 +4,7 @@
    Si el menú tiene SolicitarPwd, se re-pide la contraseña una vez por sesión. *@
 @inject SesionUsuario Sesion
 @inject UsuarioService Usuarios
+@inject IJSRuntime JS
 
 @if (_menu is null)
 {
@@ -47,9 +48,23 @@ else
     private string _pwd = "";
     private bool _validando;
     private string _aviso = "";
+    private bool _focoPuesto;
+
+    private bool PidePwd => _menu is not null && _menu.SolicitarPwd && !Sesion.MenuValidado(CodMenu);
 
     protected override void OnParametersSet()
         => _menu = Sesion.Usuario?.Menus.FirstOrDefault(m => m.CodMenu == CodMenu);
+
+    // Foco directo al campo de contraseña al entrar en el módulo: el atributo autofocus
+    // de Blazor no dispara al navegar dentro de la SPA.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (PidePwd && !_focoPuesto)
+        {
+            _focoPuesto = true;
+            await JS.InvokeVoidAsync("r5.seleccionar", "pwdModulo");
+        }
+    }
 
     private async Task ValidarAsync()
     {
@@ -76,6 +91,13 @@ else
         finally
         {
             _validando = false;
+            // Si sigue sin validar (contraseña incorrecta), el foco vuelve al campo para
+            // reintentar sin tener que tocar la pantalla.
+            if (!Sesion.MenuValidado(CodMenu))
+            {
+                StateHasChanged();
+                await JS.InvokeVoidAsync("r5.seleccionar", "pwdModulo");
+            }
         }
     }
 }

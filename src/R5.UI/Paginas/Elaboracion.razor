@@ -19,9 +19,13 @@
                 <button class="@(!_verCerradas ? "activo" : "")" aria-pressed="@(!_verCerradas)" @onclick="() => CambiarFiltroAsync(false)" disabled="@_cargando">Abiertas</button>
                 <button class="@(_verCerradas ? "activo" : "")" aria-pressed="@_verCerradas" @onclick="() => CambiarFiltroAsync(true)" disabled="@_cargando">Cerradas</button>
             </div>
-            <button class="r5-btn r5-btn--primario" style="margin-left:auto" @onclick="AbrirSelectorAsync" disabled="@_cargando">
-                + Nueva elaboración
-            </button>
+            @* Solo arriba cuando hay lista: si está vacía, la acción vive en el estado vacío. *@
+            @if (_lista.Count > 0)
+            {
+                <button class="r5-btn r5-btn--primario" style="margin-left:auto" @onclick="AbrirSelectorAsync" disabled="@_cargando">
+                    + Nueva elaboración
+                </button>
+            }
         </div>
 
         <Aviso Tipo="@_tipoAviso" Mensaje="@_aviso" />

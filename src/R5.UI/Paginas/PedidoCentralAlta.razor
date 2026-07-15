@@ -155,6 +155,10 @@
         finally
         {
             _cargandoCentros = false;
+            // El buscador está deshabilitado hasta que hay centros, así que el foco no puede
+            // ir en el primer render: se da aquí, cuando el campo ya es utilizable.
+            StateHasChanged();
+            if (_centros.Count > 0) await JS.InvokeVoidAsync("r5.seleccionar", "busquedaPedido");
         }
     }
 
