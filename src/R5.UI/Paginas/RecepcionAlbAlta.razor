@@ -667,6 +667,10 @@
             }
             else if (int.TryParse(codigo, out int codProd) && codProd > 0)
             {
+                // Teclear el código exige permiso: producto en consultas o código de
+                // proveedor en compras (RW_CodProdEnConsultas / RW_CodProvEnCompras de R3).
+                if (!Sesion.Usuario.CodProdEnConsultas && !Sesion.Usuario.CodProvEnCompras)
+                { MostrarError("Escanea el código de barras: no tienes permiso para buscar por código."); return; }
                 respuesta = await Albaranes.GetLineaPorProdAsync(_numAlbaran, _fecha, codProd, codAlm,
                     _gamaElegida.CodProv, _gamaElegida.Gama.CodGama, _numPedidoContra);
             }

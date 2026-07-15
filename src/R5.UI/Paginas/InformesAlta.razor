@@ -283,6 +283,8 @@
             }
             else if (int.TryParse(codigo, out int codProd) && codProd > 0)
             {
+                // Teclear el código de producto exige permiso (RW_CodProdEnConsultas de R3).
+                if (!Sesion.Usuario.CodProdEnConsultas) { MostrarError("Escanea el código de barras: no tienes permiso para buscar por código de producto."); return; }
                 respuesta = await Informes.GetProdPorCodAsync(_tipoElegido.Tipo, codAlm, codProd);
             }
             else

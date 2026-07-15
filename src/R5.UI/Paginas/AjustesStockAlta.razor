@@ -110,10 +110,13 @@
                 }
                 @if (_tipoElegido.PermiteCambioAlmDestino)
                 {
+                    @* Cambiarlo exige además permiso del usuario y del almacén (R3:
+                       RW_CambAlmDestAjustes + AjustesContraOtroAlm); si no, queda fijado al propio. *@
                     <div class="r5-campo" style="min-width: 180px;">
                         <label for="almDestAjuste">Almacén destino</label>
                         <input id="almDestAjuste" class="r5-input r5-input--numero" type="text" inputmode="numeric"
-                               min="1" max="999" @bind="_codAlmDest" disabled="@(_numAjuste > 0)" />
+                               min="1" max="999" @bind="_codAlmDest"
+                               disabled="@(_numAjuste > 0 || !Sesion.Usuario!.CambAlmDestAjustes || !Sesion.Usuario.Almacen.AjustesContraOtroAlm)" />
                     </div>
                 }
             </div>
@@ -286,7 +289,12 @@
             int codProd = 0;
             long codEan = 0;
             if (codigo.Length >= 8 && long.TryParse(codigo, out long ean)) codEan = ean;
-            else if (int.TryParse(codigo, out int cod) && cod > 0) codProd = cod;
+            else if (int.TryParse(codigo, out int cod) && cod > 0)
+            {
+                // Teclear el código de producto exige permiso (RW_CodProdEnConsultas de R3).
+                if (!Sesion.Usuario.CodProdEnConsultas) { MostrarError("Escanea el código de barras: no tienes permiso para buscar por código de producto."); return; }
+                codProd = cod;
+            }
             else { MostrarError("Introduce un código numérico (producto o EAN)."); return; }
 
             var respuesta = await Ajustes.GetLineaProductoAsync(_numAjuste, _fecha, origen, _codAlmDest, codProd, codEan);

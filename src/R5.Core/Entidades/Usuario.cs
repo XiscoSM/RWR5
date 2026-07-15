@@ -23,4 +23,10 @@ public sealed class Usuario
     public bool PermisoUbi { get; set; }
     public bool FinalizarPedCentral { get; set; }
     public string? Mail { get; set; }
+    /// <summary>Permite cambiar el almacén destino en ajustes (junto con el flag del almacén).</summary>
+    public bool CambAlmDestAjustes { get; set; }
+    /// <summary>Permite anular facturas TPV (módulo 28).</summary>
+    public bool FactTpvAnula { get; set; }
+    /// <summary>Perfil sobre la ficha de cliente TPV: 0 no crear, 1 modif. parcial, 2 modif. todo, 3 avanzadas.</summary>
+    public byte PerfilClienteTpv { get; set; }
 }

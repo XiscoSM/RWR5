@@ -24,7 +24,7 @@ public sealed class FacturaTpvService
 
     /// <summary>POST FacturaTpv/Ticket — añade un ticket a la prefactura; devuelve PreFactura.</summary>
     public Task<ApiRespuesta<int>> AnadirTicketAsync(int preFactura, int cliente, short usuario, string eanTicket, decimal amount = -9999, CancellationToken ct = default)
-        => _api.PostAsync<int>($"FacturaTpv/Ticket?preFactura={preFactura}&cliente={cliente}&usuario={usuario}&eanTicket={Uri.EscapeDataString(eanTicket)}&amount={amount}", cuerpo: null, ct);
+        => _api.PostAsync<int>($"FacturaTpv/Ticket?preFactura={preFactura}&cliente={cliente}&usuario={usuario}&eanTicket={Uri.EscapeDataString(eanTicket)}&amount={amount.ToString(System.Globalization.CultureInfo.InvariantCulture)}", cuerpo: null, ct);
 
     /// <summary>DELETE FacturaTpv/Ticket — quita un ticket de la prefactura.</summary>
     public Task<ApiRespuesta> QuitarTicketAsync(int preFactura, short storeNo, short termNo, int transNo, CancellationToken ct = default)
@@ -44,7 +44,7 @@ public sealed class FacturaTpvService
 
     /// <summary>DELETE FacturaTpv/{factura} — borra la factura (cotejando cliente/fecha/importe).</summary>
     public Task<ApiRespuesta> BorrarFacturaAsync(string factura, int cliente, DateTime fecha, decimal importeTotal, string usuario, CancellationToken ct = default)
-        => _api.DeleteAsync($"FacturaTpv/{Uri.EscapeDataString(factura)}?cliente={cliente}&fecha={fecha:yyyy-MM-dd}&importeTotal={importeTotal}&usuario={Uri.EscapeDataString(usuario)}", ct);
+        => _api.DeleteAsync($"FacturaTpv/{Uri.EscapeDataString(factura)}?cliente={cliente}&fecha={fecha:yyyy-MM-dd}&importeTotal={importeTotal.ToString(System.Globalization.CultureInfo.InvariantCulture)}&usuario={Uri.EscapeDataString(usuario)}", ct);
 
     /// <summary>POST FacturaTpv/{factura}/ColaMail — encola el envío de la factura por mail.</summary>
     public Task<ApiRespuesta<int>> EnviarMailAsync(string factura, short usuario, string toMail, CancellationToken ct = default)

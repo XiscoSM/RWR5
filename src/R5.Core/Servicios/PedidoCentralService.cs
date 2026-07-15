@@ -36,7 +36,7 @@ public sealed class PedidoCentralService
     /// <summary>GET .../LineaDto — pedido abierto del centro, central que sirve, stock y cant. ya pedida.</summary>
     public Task<ApiRespuesta<PedidoCentralLineaSelectDTO>> GetLineaDtoAsync(short codAlm, int codProd, short codUsuario, byte centroDist, decimal cant, CancellationToken ct = default)
         => _api.GetAsync<PedidoCentralLineaSelectDTO>(
-            $"PedidoCentral/{codAlm}/Prod/{codProd}/LineaDto?codUsuario={codUsuario}&centroDist={centroDist}&cant={cant}", ct);
+            $"PedidoCentral/{codAlm}/Prod/{codProd}/LineaDto?codUsuario={codUsuario}&centroDist={centroDist}&cant={cant.ToString(System.Globalization.CultureInfo.InvariantCulture)}", ct);
 
     /// <summary>POST PedidoCentral/{alm}/{prod} — añade la línea (crea el pedido si no hay uno abierto).</summary>
     public Task<ApiRespuesta<PedidoCentral>> PostLineaAsync(PedidoCentralLinInsertDTO linea, CancellationToken ct = default)
