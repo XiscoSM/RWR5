@@ -263,6 +263,7 @@ h3 { font-size: var(--texto-lg); }
 .r5-aviso--error { background: var(--c-error-fondo); color: var(--c-error); }
 .r5-aviso--exito { background: var(--c-exito-fondo); color: var(--c-exito); }
 .r5-aviso--info { background: var(--c-primario-claro); color: var(--c-primario-osc); }
+.r5-aviso--aviso { background: var(--c-aviso-fondo); color: var(--c-aviso); }
 
 /* ---------- Carga ---------- */
 .r5-cargando {

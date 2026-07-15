@@ -21,10 +21,18 @@
            registrado no debe invitar a un segundo registro. *@
         @if (Reg == 0 && !_registrado)
         {
-            <button class="r5-btn r5-btn--primario" style="margin-left:auto"
-                    @onclick="AbrirFormularioLink" disabled="@(_fecha is null || _cargando || _lineas.Count == 0)">
-                Registrar recepción
-            </button>
+            <div class="r5-fila" style="margin-left:auto">
+                @* Reanudar la recepción: vuelve al alta con este albarán cargado para
+                   seguir escaneando líneas (paridad con "Continuar" de R3). *@
+                <button class="r5-btn r5-btn--secundario"
+                        @onclick="ReanudarRecepcion" disabled="@(_fecha is null || _cargando)">
+                    + Añadir líneas
+                </button>
+                <button class="r5-btn r5-btn--primario"
+                        @onclick="AbrirFormularioLink" disabled="@(_fecha is null || _cargando || _lineas.Count == 0)">
+                    Registrar recepción
+                </button>
+            </div>
         }
     </div>
 
@@ -206,4 +214,8 @@
     }
 
     private void Volver() => Nav.NavigateTo("/recepcionAlb");
+
+    // Reanudar la recepción de un albarán pendiente: el alta lo carga por ruta.
+    private void ReanudarRecepcion()
+        => Nav.NavigateTo($"/recepcionAlb/alta/{FechaRuta}/{NumAlbaran}");
 }

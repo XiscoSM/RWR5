@@ -5,6 +5,7 @@
    3) Escaneo encadenado de líneas con cajas/cantidad y precios de la condición
       de compra; la primera línea crea el albarán. Registrar al terminar. *@
 @page "/recepcionAlb/alta"
+@page "/recepcionAlb/alta/{FechaRuta}/{NumRuta:int}"
 @inject AlbaranService Albaranes
 @inject ProveedorService Proveedores
 @inject PedidoCompraService Pedidos
@@ -17,7 +18,7 @@
 
     <div class="r5-fila">
         <button class="r5-btn r5-btn--secundario" @onclick="Volver">← Albaranes</button>
-        <h2>Nueva recepción</h2>
+        <h2>@(NumRuta > 0 ? "Continuar recepción" : "Nueva recepción")</h2>
         @if (_numAlbaran > 0)
         {
             <div class="r5-fila" style="margin-left:auto">
@@ -36,17 +37,40 @@
         @* El registro exige el "link": código de barras que une el albarán en papel con el
            documento digital (se escanea de la etiqueta pegada al papel). *@
         <form class="r5-tarjeta r5-columna r5-ancho-form" @onsubmit="RegistrarAsync">
-            <h3>Link del documento</h3>
-            <p class="r5-texto-suave r5-texto-sm">Escanea la etiqueta de link pegada al albarán en papel.</p>
-            <input id="linkDoc" class="r5-input r5-input--numero" type="text" inputmode="numeric" maxlength="13"
-                   @bind="_linkTexto" @bind:event="oninput" autofocus disabled="@_registrando" />
-            <Aviso Mensaje="@(_tipoAviso == "error" ? _aviso : "")" />
+            <h3>Registrar recepción</h3>
+
+            @* Controles de cuadre de la gama: obligan a teclear los totales del papel y se
+               cotejan contra lo grabado antes de registrar (mismo control que R3). *@
+            @if (_gamaElegida is not null && _gamaElegida.Gama.ControlCant)
+            {
+                <div class="r5-campo">
+                    <label for="ctrlCant">Cantidad total (según el albarán en papel)</label>
+                    <input id="ctrlCant" class="r5-input r5-input--numero" type="number" inputmode="decimal" step="0.001"
+                           @bind="_ctrlCant" disabled="@_registrando" />
+                </div>
+            }
+            @if (_gamaElegida is not null && _gamaElegida.Gama.ControlImporte)
+            {
+                <div class="r5-campo">
+                    <label for="ctrlImp">Importe total € (según el albarán en papel)</label>
+                    <input id="ctrlImp" class="r5-input r5-input--numero" type="number" inputmode="decimal" step="0.01"
+                           @bind="_ctrlImporte" disabled="@_registrando" />
+                </div>
+            }
+
+            <div class="r5-campo">
+                <label for="linkDoc">Link del documento</label>
+                <input id="linkDoc" class="r5-input r5-input--numero" type="text" inputmode="numeric" maxlength="13"
+                       placeholder="Escanea la etiqueta pegada al albarán en papel"
+                       @bind="_linkTexto" @bind:event="oninput" autofocus disabled="@_registrando" />
+            </div>
+            <Aviso Tipo="@_tipoAviso" Mensaje="@_aviso" />
             <div class="r5-fila">
                 <button type="submit" class="r5-btn r5-btn--primario"
-                        disabled="@(_registrando || !long.TryParse(_linkTexto, out _))">
-                    @(_registrando ? "Registrando…" : "Confirmar registro")
+                        disabled="@(_registrando || !long.TryParse(_linkTexto, out _) || FaltanControles)">
+                    @(_registrando ? "Registrando…" : (_descuadreAvisado ? "Registrar igualmente" : "Confirmar registro"))
                 </button>
-                <button type="button" class="r5-btn r5-btn--fantasma" @onclick="() => _pidiendoLink = false">Cancelar</button>
+                <button type="button" class="r5-btn r5-btn--fantasma" @onclick="CancelarRegistro">Cancelar</button>
             </div>
         </form>
     }
@@ -222,24 +246,90 @@
                     <div><dt>Stock actual</dt><dd>@Cantidad(_linea.Stock, _linea.Prod.DecimalesEnCant)</dd></div>
                 </dl>
 
+                @* Aviso de doble recepción: el producto ya tiene cantidad en este albarán u otro
+                   del día (mismo criterio que R3/R4: CantAlbTotal). No bloquea, informa. *@
+                @if (_linea.CantAlbTotal != 0)
+                {
+                    <Aviso Tipo="aviso" Mensaje="@($"Ya se han recepcionado {Cantidad(_linea.CantAlbTotal, _linea.Prod.DecimalesEnCant)} de este producto.")" />
+                }
+
+                @* Trazabilidad: fecha de caducidad obligatoria si el producto la controla
+                   (DiasCaducidad > 0) y lote del proveedor si controla lotes. *@
+                @if (_linea.Prod.DiasCaducidad > 0 || _linea.Prod.ControlaLotes)
+                {
+                    <div class="r5-fila" style="flex-wrap: wrap;">
+                        @if (_linea.Prod.DiasCaducidad > 0)
+                        {
+                            <div class="r5-campo" style="flex:1; min-width: 200px;">
+                                <label for="fechaCadRec">Fecha de caducidad</label>
+                                <input id="fechaCadRec" class="r5-input" type="date"
+                                       @bind="_fechaCaducidad" disabled="@_anadiendo" />
+                                <span class="r5-texto-suave r5-texto-sm">
+                                    Mínimo sin aviso: @DateTime.Today.AddDays(_linea.Prod.DiasCaducidad).ToString("dd/MM/yy") (@_linea.Prod.DiasCaducidad días)
+                                </span>
+                            </div>
+                        }
+                        @if (_linea.Prod.ControlaLotes)
+                        {
+                            <div class="r5-campo" style="flex:1; min-width: 200px;">
+                                <label for="loteProvRec">Lote del proveedor</label>
+                                <input id="loteProvRec" class="r5-input" type="text" maxlength="20"
+                                       @bind="_loteProv" disabled="@_anadiendo" />
+                            </div>
+                        }
+                    </div>
+                }
+
+                @* Precio abierto: la condición de compra permite teclear el precio real
+                   (solo sin pedido, como R3). Vacío = usar el PNC de la condición. *@
+                @if (_linea.PrecioAbierto && _numPedidoContra == 0)
+                {
+                    <div class="r5-campo" style="max-width: 260px;">
+                        <label for="precioAbiertoRec">Precio de compra (abierto)</label>
+                        <input id="precioAbiertoRec" class="r5-input r5-input--numero" type="number" inputmode="decimal"
+                               step="0.01" min="0.10" max="999" placeholder="@Moneda((decimal)_linea.PNC)"
+                               @bind="_precioAbierto" disabled="@_anadiendo" />
+                        <span class="r5-texto-suave r5-texto-sm">Entre 0,10 y 999 €. Vacío = precio de la condición.</span>
+                    </div>
+                }
+
+                <label class="r5-fila" style="gap: var(--esp-2); cursor: pointer;">
+                    <input type="checkbox" @bind="_sinCargo" disabled="@_anadiendo" />
+                    <span>Mercancía sin cargo (no se factura)</span>
+                </label>
+
                 <div class="r5-fila">
                     <div class="r5-campo" style="flex:1">
                         <label for="cajasRec">Cajas</label>
-                        <input id="cajasRec" class="r5-input r5-input--numero" type="text" inputmode="numeric" min="0"
+                        <input id="cajasRec" class="r5-input r5-input--numero" type="text" inputmode="numeric"
                                value="@_cajas" @oninput="CambioCajas" />
                     </div>
                     <div class="r5-campo" style="flex:1">
                         <label for="cantRec">Cantidad</label>
                         <input id="cantRec" class="r5-input r5-input--numero" type="number" inputmode="decimal"
-                               step="@(_linea.Prod.DecimalesEnCant ? "0.001" : "1")" min="0"
+                               step="@(_linea.Prod.DecimalesEnCant ? "0.001" : "1")"
                                @bind="_cantidad" @bind:event="oninput" />
+                        <span class="r5-texto-suave r5-texto-sm">Negativa = devolución.</span>
                     </div>
                 </div>
 
-                <button class="r5-btn r5-btn--primario r5-btn--bloque" @onclick="AnadirAsync"
-                        disabled="@(_anadiendo || _cantidad <= 0)">
-                    @(_anadiendo ? "Añadiendo…" : $"Añadir {Cantidad(_cantidad, _linea.Prod.DecimalesEnCant)} al albarán")
-                </button>
+                @if (_confirmarCadCorta)
+                {
+                    @* Fecha de caducidad corta: aviso con confirmación explícita (SIN comentario
+                       automático: decisión de 15/07/26, igual que R3 actual y R4). *@
+                    <Aviso Tipo="aviso" Mensaje="@($"Fecha de caducidad corta: {_fechaCaducidad:dd/MM/yy} está a menos de {_linea.Prod.DiasCaducidad} días. ¿Continuar?")" />
+                    <div class="r5-fila">
+                        <button class="r5-btn r5-btn--primario" @onclick="ContinuarCadCortaAsync" disabled="@_anadiendo">Continuar igualmente</button>
+                        <button class="r5-btn r5-btn--fantasma" @onclick="() => _confirmarCadCorta = false">Corregir fecha</button>
+                    </div>
+                }
+                else
+                {
+                    <button class="r5-btn r5-btn--primario r5-btn--bloque" @onclick="AnadirAsync"
+                            disabled="@(_anadiendo || _cantidad == 0 || (_linea.Prod.DiasCaducidad > 0 && _fechaCaducidad is null))">
+                        @(_anadiendo ? "Añadiendo…" : $"Añadir {Cantidad(_cantidad, _linea.Prod.DecimalesEnCant)} al albarán")
+                    </button>
+                }
             </div>
         }
 
@@ -261,6 +351,11 @@
 </GuardiaModulo>
 
 @code {
+    // Reanudación: si la ruta trae fecha+número, se carga ese albarán pendiente
+    // y se sigue añadiendo líneas sobre él (paridad con "Continuar" de R3).
+    [Parameter] public string? FechaRuta { get; set; }
+    [Parameter] public int NumRuta { get; set; }
+
     private string _codigoProv = "";
     private List<Proveedor> _gamas = new();
     private Proveedor? _gamaElegida;
@@ -274,6 +369,44 @@
     private string _aviso = "";
     private string _tipoAviso = "error";
 
+    // Reanudación de un albarán pendiente: carga cabecera y líneas y deja el flujo
+    // exactamente donde estaba (proveedor/gama fijados, escáner listo).
+    protected override async Task OnInitializedAsync()
+    {
+        if (NumRuta <= 0 || string.IsNullOrEmpty(FechaRuta)
+            || !DateTime.TryParse(FechaRuta, out DateTime fecha)) return;
+
+        _ocupado = true;
+        try
+        {
+            var cab = await Albaranes.GetCabeceraAsync(NumRuta, fecha);
+            if (!cab.Ok || cab.Datos is null || cab.Datos.NumAlbaran <= 0)
+            {
+                MostrarError($"No se pudo cargar el albarán {NumRuta}: {cab.Error}");
+                return;
+            }
+            if (cab.Datos.Reg)
+            {
+                MostrarError($"El albarán {NumRuta} ya está registrado: no admite más líneas.");
+                return;
+            }
+
+            _fecha = fecha;
+            _numAlbaran = cab.Datos.NumAlbaran;
+            _gamaElegida = cab.Datos.Prov;
+            _numAlbProv = cab.Datos.NumAlbProv;
+            _numPedidoContra = cab.Datos.NumPedido;
+            _pedidoConfirmado = cab.Datos.NumPedido > 0;
+            _dupComprobado = true; // el albarán ya existe: el aviso de duplicado no aplica
+            await RefrescarLineasAsync();
+            _lineasAnadidas = _lineasDoc.Count;
+        }
+        finally
+        {
+            _ocupado = false;
+        }
+    }
+
     // Foco directo al buscador de proveedor al entrar (el autofocus de Blazor no dispara
     // al navegar) y, después, al nº de albarán en cuanto aparece (tras elegir gama): el
     // operario debe teclearlo antes de escanear productos.
@@ -281,7 +414,8 @@
     {
         if (firstRender)
         {
-            await JS.InvokeVoidAsync("r5.seleccionar", "busquedaProv");
+            // Al reanudar, el proveedor ya está fijado: el foco va directo al escáner.
+            await JS.InvokeVoidAsync("r5.seleccionar", _numAlbaran > 0 ? "busquedaRecepcion" : "busquedaProv");
             return;
         }
         if (_enfocarAlbaran)
@@ -299,7 +433,39 @@
     private int _lineasAnadidas;
     private List<AlbaranLin> _lineasDoc = new();
     private bool _cargandoLineas;
-    private readonly DateTime _fecha = DateTime.Today;
+    private DateTime _fecha = DateTime.Today;   // al reanudar se toma la del albarán
+
+    // Trazabilidad de la línea en curso (F1.1): caducidad obligatoria si DiasCaducidad>0,
+    // lote del proveedor si el producto controla lotes. Se limpian al añadir.
+    private DateTime? _fechaCaducidad;
+    private string _loteProv = "";
+    private bool _confirmarCadCorta;   // aviso de caducidad corta pendiente de confirmar
+    private bool _cadCortaAceptada;    // el operario ya aceptó la fecha corta de ESTA línea
+
+    // Precio abierto y sin cargo (F1.2).
+    private decimal? _precioAbierto;
+    private bool _sinCargo;
+
+    // Aviso (no bloqueante) de nº de albarán de proveedor duplicado: se comprueba una vez.
+    private bool _dupComprobado;
+
+    // Cuadre al registrar (ControlCant/ControlImporte de la gama).
+    private decimal? _ctrlCant;
+    private decimal? _ctrlImporte;
+    private bool _descuadreAvisado;    // ya se avisó del descuadre: el siguiente submit registra
+
+    // Con control activo, el total del papel es obligatorio (como en R3).
+    private bool FaltanControles =>
+        _gamaElegida is not null &&
+        ((_gamaElegida.Gama.ControlCant && _ctrlCant is null) ||
+         (_gamaElegida.Gama.ControlImporte && _ctrlImporte is null));
+
+    private void CancelarRegistro()
+    {
+        _pidiendoLink = false;
+        _descuadreAvisado = false;
+        _aviso = "";
+    }
 
     // Recepción contra pedido de compra (opcional).
     private string _numPedidoTexto = "";
@@ -502,6 +668,22 @@
             _linea = respuesta.Datos;
             _cajas = 1;
             _cantidad = UnidsCaja;
+            // Estado de trazabilidad/extras de la línea nueva.
+            _fechaCaducidad = null;
+            _loteProv = "";
+            _precioAbierto = null;
+            _sinCargo = false;
+            _confirmarCadCorta = false;
+            _cadCortaAceptada = false;
+
+            // Aviso de duplicado (una sola vez, antes de crear el albarán): si el usuario ya
+            // tiene un albarán de este proveedor con el mismo nº de proveedor, probablemente
+            // esté recepcionando dos veces el mismo papel. No bloquea: informa.
+            if (!_dupComprobado && _numAlbaran == 0)
+            {
+                _dupComprobado = true;
+                await AvisarSiAlbaranDuplicadoAsync();
+            }
         }
         finally
         {
@@ -511,17 +693,85 @@
         }
     }
 
+    // Busca en los albaranes del usuario (pendientes y registrados) uno del mismo proveedor
+    // con el mismo nº de albarán de proveedor. Mejor esfuerzo: si falla, no molesta.
+    private async Task AvisarSiAlbaranDuplicadoAsync()
+    {
+        if (_gamaElegida is null || !Sesion.Autenticado) return;
+        string numProv = _numAlbProv.Trim();
+        if (numProv.Length == 0) return;
+
+        short codAlm = Sesion.Usuario!.Almacen.CodAlm;
+        short codUsuario = Sesion.Usuario.CodUsuario;
+        foreach (bool reg in new[] { false, true })
+        {
+            var r = await Albaranes.GetAlbaranesAsync(codAlm, codUsuario, reg);
+            var dup = r.Datos?.FirstOrDefault(a =>
+                a.Prov.CodProv == _gamaElegida.CodProv &&
+                string.Equals(a.NumAlbProv?.Trim(), numProv, StringComparison.OrdinalIgnoreCase));
+            if (dup is not null)
+            {
+                _tipoAviso = "aviso";
+                _aviso = $"Ojo: ya existe el albarán {dup.NumAlbaran} del {Fecha(dup.Fecha)} ({(dup.Reg ? "registrado" : "pendiente")}) con el nº de proveedor «{numProv}». Comprueba que no está duplicado.";
+                return;
+            }
+        }
+    }
+
+    // El operario aceptó la fecha de caducidad corta: se repite el alta con la excepción marcada.
+    private async Task ContinuarCadCortaAsync()
+    {
+        _cadCortaAceptada = true;
+        _confirmarCadCorta = false;
+        await AnadirAsync();
+    }
+
     private async Task AnadirAsync()
     {
-        if (_anadiendo || _linea is null || _gamaElegida is null || _cantidad <= 0) return;
+        if (_anadiendo || _linea is null || _gamaElegida is null || _cantidad == 0) return;
 
         // Tope de sanidad: una lectura del escaner caida en el campo cantidad (>=10.000)
         // no puede acabar grabada como unidades.
-        if (_cantidad >= 10000) { MostrarError($"Cantidad {_cantidad} no valida: ¿has escaneado un codigo en el campo de cantidad?"); return; }
+        if (Math.Abs(_cantidad) >= 10000) { MostrarError($"Cantidad {_cantidad} no valida: ¿has escaneado un codigo en el campo de cantidad?"); return; }
+
+        // --- Fecha de caducidad (productos que la controlan) ---
+        if (_linea.Prod.DiasCaducidad > 0)
+        {
+            if (_fechaCaducidad is null) { MostrarError("Introduce la fecha de caducidad del producto."); return; }
+
+            // Caducado: bloqueo salvo devolución (cantidad negativa), igual que R3/R4.
+            if (_fechaCaducidad.Value.Date < DateTime.Today && _cantidad > 0)
+            {
+                MostrarError($"Producto caducado ({_fechaCaducidad:dd/MM/yy}): no se puede recepcionar. Solo se permite en devoluciones (cantidad negativa).");
+                return;
+            }
+
+            // Caducidad corta: pide confirmación explícita UNA vez. Sin comentario automático
+            // (decisión 15/07/26: se retiró también de R3).
+            if (_fechaCaducidad.Value.Date >= DateTime.Today
+                && (_fechaCaducidad.Value.Date - DateTime.Today).TotalDays < _linea.Prod.DiasCaducidad
+                && !_cadCortaAceptada)
+            {
+                _confirmarCadCorta = true;
+                return;
+            }
+        }
+
+        // --- Precio abierto: si se tecleó, valida el rango de R3 (0,10–999) ---
+        decimal pnc = (decimal)_linea.PNC;
+        if (_linea.PrecioAbierto && _numPedidoContra == 0 && _precioAbierto is not null)
+        {
+            if (_precioAbierto < 0.1m || _precioAbierto > 999m)
+            {
+                MostrarError("Precio de compra fuera de parámetros (0,10–999 €).");
+                return;
+            }
+            pnc = _precioAbierto.Value;
+        }
 
         // Cajas coherentes con la cantidad final: si se editó la cantidad a mano, _cajas
-        // se quedó con el valor anterior. Se deriva de la cantidad (misma regla que el resto).
-        _cajas = (short)Math.Ceiling(_cantidad / UnidsCaja);
+        // se quedó con el valor anterior. Se deriva de la cantidad (negativa = devolución).
+        _cajas = (short)(Math.Sign(_cantidad) * Math.Max(1, (int)Math.Ceiling(Math.Abs(_cantidad) / UnidsCaja)));
 
         _anadiendo = true;
         _aviso = "";
@@ -533,7 +783,8 @@
                 CodProv = _gamaElegida.CodProv,
                 CodAlm = Sesion.Usuario!.Almacen.CodAlm,
                 Cant = _cantidad,
-                TipoLinAtipico = _linea.TipoLinAtipico,
+                // Sin cargo = tipo de línea atípico 4 (no se factura), como R3.
+                TipoLinAtipico = _sinCargo ? (byte)4 : _linea.TipoLinAtipico,
                 Cajas = _cajas,
                 PTarifa = (decimal)_linea.PTarifa,
                 NumPedido = _numPedidoContra,
@@ -544,13 +795,18 @@
                 NumAlbaran = _numAlbaran,
                 CodGama = _gamaElegida.Gama.CodGama,
                 CodProd = _linea.Prod.CodProd,
-                PrecioNetoComercial = (decimal)_linea.PNC,
+                PrecioNetoComercial = pnc,
                 CodUsuario = Sesion.Usuario.CodUsuario,
                 UnidsCaja = UnidsCaja,
                 DtosComerciales = (decimal)_linea.DtosComerciales,
                 NumAlbProv = _numAlbProv.Trim(),
                 TipoPrecio = _linea.TipoPrecio,
-                PncFecha = _linea.PncFecha
+                PncFecha = _linea.PncFecha,
+                // Trazabilidad: caducidad y lote capturados; Datos pasa tal cual llegó del
+                // Get (mismo passthrough que R4).
+                FechaCaducidad = _fechaCaducidad,
+                NumLoteProv = _loteProv.Trim(),
+                Datos = _linea.Datos ?? ""
             };
             var respuesta = await Albaranes.PostLineaAsync(alta);
             if (!respuesta.Ok || respuesta.Datos is null) { MostrarError(respuesta.Error); return; }
@@ -561,6 +817,11 @@
             _aviso = $"{_linea.Prod.DescProd}: {Cantidad(_cantidad, _linea.Prod.DecimalesEnCant)} añadido al albarán {_numAlbaran}.";
             _linea = null;
             _codigo = "";
+            _fechaCaducidad = null;
+            _loteProv = "";
+            _precioAbierto = null;
+            _sinCargo = false;
+            _cadCortaAceptada = false;
             _ = RefrescarLineasAsync();
         }
         finally
@@ -586,15 +847,49 @@
     private string _linkTexto = "";
 
     // Registrar la recepción: irreversible desde la app (genera la entrada en RW).
-    // Requiere el link escaneado del documento en papel (obligatorio para el proc).
+    // Requiere el link escaneado del documento en papel (obligatorio para el proc) y,
+    // si la gama tiene controles, el cuadre de los totales del papel contra lo grabado.
     private async Task RegistrarAsync()
     {
-        if (_registrando || _numAlbaran <= 0 || !long.TryParse(_linkTexto, out long link) || link <= 0) return;
+        if (_registrando || _numAlbaran <= 0 || FaltanControles
+            || !long.TryParse(_linkTexto, out long link) || link <= 0) return;
 
         _registrando = true;
-        _aviso = "";
+        if (!_descuadreAvisado) _aviso = "";
         try
         {
+            // Cuadre contra los totales reales del documento (los calcula el servidor).
+            if (!_descuadreAvisado && _gamaElegida is not null
+                && (_gamaElegida.Gama.ControlCant || _gamaElegida.Gama.ControlImporte))
+            {
+                var cab = await Albaranes.GetCabeceraAsync(_numAlbaran, _fecha);
+                if (cab.Ok && cab.Datos is not null)
+                {
+                    var descuadres = new List<string>();
+                    if (_gamaElegida.Gama.ControlCant && _ctrlCant is not null
+                        && Math.Abs(_ctrlCant.Value - cab.Datos.CantTotal) > 0.5m)
+                    {
+                        descuadres.Add($"cantidad: papel {_ctrlCant} vs sistema {cab.Datos.CantTotal}");
+                    }
+                    if (_gamaElegida.Gama.ControlImporte && _ctrlImporte is not null)
+                    {
+                        // Mismo orden de preferencia que R3: total factura > neto factura > neto comercial.
+                        decimal impDoc = cab.Datos.ImpTotalFact != 0 ? cab.Datos.ImpTotalFact
+                            : cab.Datos.ImpNetoFact != 0 ? cab.Datos.ImpNetoFact : cab.Datos.ImpNetoComercial;
+                        if (Math.Abs(_ctrlImporte.Value - impDoc) > 0.5m)
+                            descuadres.Add($"importe: papel {Moneda(_ctrlImporte.Value)} vs sistema {Moneda(impDoc)}");
+                    }
+                    if (descuadres.Count > 0)
+                    {
+                        // Primer aviso: no registra. El siguiente submit ("Registrar igualmente") sí.
+                        _descuadreAvisado = true;
+                        _tipoAviso = "aviso";
+                        _aviso = $"El albarán NO CUADRA ({string.Join(" · ", descuadres)}). Revisa las líneas o pulsa «Registrar igualmente».";
+                        return;
+                    }
+                }
+            }
+
             var respuesta = await Albaranes.RegistrarAsync(_numAlbaran, _fecha, Sesion.Usuario!.CodUsuario, link);
             if (!respuesta.Ok) { MostrarError(respuesta.Error); return; }
 
