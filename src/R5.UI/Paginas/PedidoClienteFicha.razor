@@ -121,13 +121,58 @@
                                @bind="_codigo" @bind:event="oninput" disabled="@_operando" />
                         <button type="submit" class="r5-btn r5-btn--secundario"
                                 disabled="@(_operando || string.IsNullOrWhiteSpace(_codigo))">Buscar</button>
+                        <button type="button" class="r5-btn r5-btn--fantasma" @onclick="AbrirCatalogoAsync" disabled="@_operando">Catálogo</button>
                     </form>
+                }
+
+                @* Selector Programa → Tecla Madisa → Producto (SelectorProdTeclaMadisa de R3):
+                   catálogo del almacén central para añadir sin escanear; al tocar un producto
+                   se reusa el MISMO flujo que el alta por EAN. *@
+                @if (_catalogoAbierto)
+                {
+                    <div class="r5-fila" style="flex-wrap: wrap; align-items: flex-start;">
+                        <div class="r5-campo" style="min-width: 200px; flex: 1;">
+                            <label>1 · Programa</label>
+                            <select class="r5-select" size="8" @onchange="ElegirProgramaAsync" disabled="@_operando">
+                                @foreach (var p in _programasMadisa)
+                                {
+                                    <option value="@p.Prog">@p.DescProg</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="r5-campo" style="min-width: 200px; flex: 1;">
+                            <label>2 · Tecla Madisa</label>
+                            <select class="r5-select" size="8" @onchange="ElegirTeclaAsync" disabled="@_operando">
+                                @foreach (var t in _teclasMadisa)
+                                {
+                                    <option value="@t.Tecla">@t.DescTecla</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="r5-campo" style="min-width: 260px; flex: 2;">
+                            <label>3 · Producto (toca para añadir)</label>
+                            <select class="r5-select" size="8" @onchange="ElegirProductoMadisaAsync" disabled="@_operando">
+                                @foreach (var p in _productosMadisa)
+                                {
+                                    <option value="@p.Prod">@p.DescProd</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+                    <button class="r5-btn r5-btn--fantasma" style="align-self: flex-start;" @onclick="() => _catalogoAbierto = false">Cerrar catálogo</button>
                 }
                 @if (_prodSel is not null)
                 {
-                    <div class="r5-ficha__identidad">
-                        <span class="r5-ficha__codigo">@_prodSel.Prod</span>
-                        <span class="r5-ficha__nombre">@_prodSel.DescProd</span>
+                    <div class="r5-fila" style="align-items: center;">
+                        @* Imagen pública por código de producto, como la ficha del selector de R3
+                           (si no existe, el onerror la oculta y queda solo el texto). *@
+                        <img src="@UrlImagenProd(_prodSel.Prod)" alt=""
+                             style="max-width: 110px; max-height: 110px; border-radius: 8px; border: 1px solid var(--c-borde);"
+                             onerror="this.style.display='none'" />
+                        <div class="r5-ficha__identidad">
+                            <span class="r5-ficha__codigo">@_prodSel.Prod</span>
+                            <span class="r5-ficha__nombre">@_prodSel.DescProd</span>
+                        </div>
                     </div>
                     <div class="r5-fila">
                         <div class="r5-campo" style="flex:1">
@@ -313,6 +358,87 @@
             StateHasChanged();
             await JS.InvokeVoidAsync("r5.seleccionar", "cantPedCli");
         }
+    }
+
+    // ---- Catálogo Programa → Tecla Madisa → Producto ----
+    private bool _catalogoAbierto;
+    private List<ProgramaMadisa> _programasMadisa = new();
+    private List<TeclaMadisa> _teclasMadisa = new();
+    private List<ProductoMadisa> _productosMadisa = new();
+
+    // Imagen pública por código (UrlBaseImagen del selector de R3): {base}{1er dígito}/{código}.JPG
+    private static string UrlImagenProd(int prod)
+    {
+        string codigo = prod.ToString();
+        return $"https://tuhiper.com/images/Prod/8k/{codigo[0]}/{codigo}.JPG";
+    }
+
+    private async Task AbrirCatalogoAsync()
+    {
+        if (_operando) return;
+        if (_catalogoAbierto) { _catalogoAbierto = false; return; }
+        _operando = true;
+        _aviso = "";
+        try
+        {
+            var r = await Pedidos.GetMadisaProgramasAsync();
+            if (!r.Ok) { MostrarError(r.Error); return; }
+            _programasMadisa = r.Datos ?? new();
+            _teclasMadisa = new();
+            _productosMadisa = new();
+            if (_programasMadisa.Count == 0) { MostrarError("No hay programas con teclas Madisa."); return; }
+            _catalogoAbierto = true;
+        }
+        finally
+        {
+            _operando = false;
+        }
+    }
+
+    private async Task ElegirProgramaAsync(ChangeEventArgs e)
+    {
+        if (!short.TryParse(e.Value?.ToString(), out short prog)) return;
+        _operando = true;
+        try
+        {
+            var r = await Pedidos.GetMadisaTeclasAsync(prog);
+            if (!r.Ok) { MostrarError(r.Error); return; }
+            _teclasMadisa = r.Datos ?? new();
+            _productosMadisa = new();
+        }
+        finally
+        {
+            _operando = false;
+        }
+    }
+
+    private async Task ElegirTeclaAsync(ChangeEventArgs e)
+    {
+        if (_cab is null || !short.TryParse(e.Value?.ToString(), out short tecla)) return;
+        _operando = true;
+        try
+        {
+            // Productos acotados al almacén CENTRAL del pedido, como R3 (Cab.AlmCentral).
+            var r = await Pedidos.GetMadisaProductosAsync(tecla, _cab.AlmCentral);
+            if (!r.Ok) { MostrarError(r.Error); return; }
+            _productosMadisa = r.Datos ?? new();
+        }
+        finally
+        {
+            _operando = false;
+        }
+    }
+
+    private async Task ElegirProductoMadisaAsync(ChangeEventArgs e)
+    {
+        if (!int.TryParse(e.Value?.ToString(), out int prod)) return;
+        var producto = _productosMadisa.FirstOrDefault(p => p.Prod == prod);
+        if (producto is null) return;
+        if (producto.Ean <= 0) { MostrarError("El producto seleccionado no tiene EAN para añadirlo."); return; }
+        // Mismo flujo que el alta manual por EAN (BuscarCatalogo de R3).
+        _codigo = producto.Ean.ToString();
+        _catalogoAbierto = false;
+        await BuscarProductoAsync();
     }
 
     private void EditarLinea(PedidoClienteLin l)

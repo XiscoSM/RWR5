@@ -89,3 +89,26 @@ public sealed class PedidoClienteLinDTO
     public decimal Cant { get; set; }
     public string Observaciones { get; set; } = "";
 }
+
+/// <summary>Programa con teclas Madisa (selector de producto del canon R3).</summary>
+public sealed class ProgramaMadisa
+{
+    public short Prog { get; set; }
+    public string DescProg { get; set; } = "";
+}
+
+/// <summary>Tecla Madisa de un programa.</summary>
+public sealed class TeclaMadisa
+{
+    public short Tecla { get; set; }
+    public string DescTecla { get; set; } = "";
+    public string DescDptoDibal { get; set; } = "";
+}
+
+/// <summary>Producto de una tecla Madisa disponible en el almacén del pedido.</summary>
+public sealed class ProductoMadisa
+{
+    public int Prod { get; set; }
+    public string DescProd { get; set; } = "";
+    public long Ean { get; set; }
+}

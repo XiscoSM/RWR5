@@ -78,4 +78,15 @@ public sealed class PedidoClienteService
     /// el proc valida la transición y recalcula el estado del documento.</summary>
     public Task<ApiRespuesta<int>> CambiarEstadoLineaAsync(int pedido, int linea, byte estado, CancellationToken ct = default)
         => _api.PostAsync<int>($"PedidoCliente/{pedido}/Linea/{linea}/Estado/{estado}", cuerpo: null, ct);
+
+    // ---- Selector Programa → Tecla Madisa → Producto (catálogo sin escanear) ----
+
+    public Task<ApiRespuesta<List<ProgramaMadisa>>> GetMadisaProgramasAsync(CancellationToken ct = default)
+        => _api.GetAsync<List<ProgramaMadisa>>("PedidoCliente/Madisa/Programas", ct);
+
+    public Task<ApiRespuesta<List<TeclaMadisa>>> GetMadisaTeclasAsync(short prog, CancellationToken ct = default)
+        => _api.GetAsync<List<TeclaMadisa>>($"PedidoCliente/Madisa/Programas/{prog}/Teclas", ct);
+
+    public Task<ApiRespuesta<List<ProductoMadisa>>> GetMadisaProductosAsync(short tecla, short codAlm, CancellationToken ct = default)
+        => _api.GetAsync<List<ProductoMadisa>>($"PedidoCliente/Madisa/Teclas/{tecla}/Productos/{codAlm}", ct);
 }
