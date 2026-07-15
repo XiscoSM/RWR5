@@ -3,6 +3,7 @@
    con el coste a la vista (el importe del ajuste sale de cant × coste). *@
 @page "/ajustesStock/alta"
 @inject AjusteService Ajustes
+@inject AlmacenService Almacenes
 @inject SesionUsuario Sesion
 @inject NavigationManager Nav
 @inject IJSRuntime JS
@@ -19,13 +20,36 @@
                 <span class="r5-chip" style="background: var(--c-primario-claro); color: var(--c-primario-osc);">
                     Ajuste @_numAjuste · @_lineasAnadidas líneas
                 </span>
-                <BotonConfirmar Texto="Registrar ajuste"
-                                Pregunta="@($"¿Registrar el ajuste {_numAjuste} con {_lineasAnadidas} líneas? Mueve stock y coste, no se puede deshacer.")"
-                                TextoOcupado="Registrando…" Ocupado="@_registrando"
-                                OnConfirmar="RegistrarAsync" />
+                <button class="r5-btn r5-btn--primario" @onclick="AbrirRegistrarAsync" disabled="@_registrando">
+                    Registrar ajuste
+                </button>
             </div>
         }
     </div>
+
+    @if (_verificandoRegistro)
+    {
+        @* Control de R3: para registrar hay que teclear el importe aproximado del ajuste
+           y debe coincidir (en euros enteros) con el importe real del documento. *@
+        <form class="r5-tarjeta r5-columna r5-ancho-form" @onsubmit="RegistrarVerificadoAsync">
+            <h3>Registrar ajuste @_numAjuste</h3>
+            <p class="r5-texto-suave r5-texto-sm">
+                Verificación anti-error: teclea el importe aproximado del ajuste (en euros, sin decimales).
+                Mueve stock y coste; no se puede deshacer.
+            </p>
+            <div class="r5-campo" style="max-width: 240px;">
+                <label for="importeVerif">Importe aproximado €</label>
+                <input id="importeVerif" class="r5-input r5-input--numero" type="number" inputmode="numeric" step="1"
+                       @bind="_importeTecleado" disabled="@_registrando" />
+            </div>
+            <div class="r5-fila">
+                <button type="submit" class="r5-btn r5-btn--primario" disabled="@(_registrando || _importeTecleado is null)">
+                    @(_registrando ? "Registrando…" : "Confirmar registro")
+                </button>
+                <button type="button" class="r5-btn r5-btn--fantasma" @onclick="() => _verificandoRegistro = false">Cancelar</button>
+            </div>
+        </form>
+    }
 
     @if (_tipoElegido is null)
     {
@@ -279,6 +303,36 @@
         // no puede acabar grabada como unidades.
         if (_cantidad >= 10000) { MostrarError($"Cantidad {_cantidad} no valida: ¿has escaneado un codigo en el campo de cantidad?"); return; }
 
+        // Almacén destino tecleado a mano: se valida su existencia ANTES de crear el
+        // ajuste (misma guarda que R3: 'Almacén no Valido'). Solo en la primera línea.
+        if (_numAjuste == 0 && _tipoElegido.PermiteCambioAlmDestino
+            && _codAlmDest != Sesion.Usuario!.Almacen.CodAlm)
+        {
+            if (_codAlmDest <= 0) { MostrarError("Introduce un almacén de destino válido."); return; }
+            var alm = await Almacenes.GetAsync(_codAlmDest);
+            if (!alm.Ok || alm.Datos is null || alm.Datos.CodAlm <= 0)
+            {
+                MostrarError($"El almacén {_codAlmDest} no existe.");
+                return;
+            }
+        }
+
+        // Trazabilidad del lote (misma regla que R3): con destino distinto del propio
+        // almacén o sección, el lote caducado o sin curación completa no se puede ajustar.
+        bool destinoDistinto = _codAlmDest != Sesion.Usuario!.Almacen.CodAlm || _progDest > 0;
+        if (destinoDistinto && _linea.Prod.FechaCaducidad is not null
+            && _linea.Prod.DiasCaducidad > 0 && _linea.Prod.FechaCaducidad.Value.Date < DateTime.Today)
+        {
+            MostrarError($"Lote caducado ({_linea.Prod.FechaCaducidad:dd/MM/yy}): no se permite con destino a otra sección o almacén.");
+            return;
+        }
+        if (destinoDistinto && _linea.Prod.FechaCuracion is not null
+            && _linea.Prod.FechaCuracion.Value.Date > DateTime.Today)
+        {
+            MostrarError($"El lote no ha alcanzado la fecha de curación ({_linea.Prod.FechaCuracion:dd/MM/yy}).");
+            return;
+        }
+
         _anadiendo = true;
         _aviso = "";
         try
@@ -331,10 +385,42 @@
         StateHasChanged();
     }
 
-    // Registrar el ajuste: irreversible desde la app (mueve stock/coste en RW).
-    private async Task RegistrarAsync()
+    // --- Registro con cotejo de importe (paridad R3: BAjusteReg_Click) ---
+    private bool _verificandoRegistro;
+    private int? _importeTecleado;
+    private decimal _importeDoc;
+
+    // Abre la verificación con el importe REAL del documento leído del servidor.
+    private async Task AbrirRegistrarAsync()
     {
         if (_registrando || _numAjuste <= 0) return;
+        _registrando = true;
+        _aviso = "";
+        try
+        {
+            var cab = await Ajustes.GetCabeceraAsync(_numAjuste, _fecha);
+            if (!cab.Ok || cab.Datos is null) { MostrarError(cab.Error); return; }
+            _importeDoc = cab.Datos.ImporteCoste;
+            _importeTecleado = null;
+            _verificandoRegistro = true;
+        }
+        finally
+        {
+            _registrando = false;
+        }
+    }
+
+    // Registrar el ajuste: irreversible desde la app (mueve stock/coste en RW). El importe
+    // tecleado debe coincidir con el del documento en euros enteros (mismo control que R3).
+    private async Task RegistrarVerificadoAsync()
+    {
+        if (_registrando || _numAjuste <= 0 || _importeTecleado is null) return;
+
+        if (_importeTecleado.Value != (int)Math.Round(_importeDoc, MidpointRounding.AwayFromZero))
+        {
+            MostrarError($"El importe no coincide (has tecleado {_importeTecleado} €). Revisa las líneas del ajuste antes de registrar.");
+            return;
+        }
 
         _registrando = true;
         _aviso = "";

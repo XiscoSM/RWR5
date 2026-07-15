@@ -22,14 +22,34 @@
                 @_preparadasSesion preparadas
             </span>
             <button class="r5-btn r5-btn--secundario" @onclick="RegistrarAsync" disabled="@(_ocupado || _cabecera is null)">Registrar</button>
-            @* Finalizar cierra la preparación aunque queden líneas: siempre con confirmación. *@
-            <BotonConfirmar Texto="Finalizar"
-                            Pregunta="@($"¿Finalizar la preparación del pedido {Pedido}? Se cierra aunque queden líneas sin preparar; no se puede deshacer.")"
-                            TextoOcupado="Finalizando…" Ocupado="@_ocupado"
-                            Deshabilitado="@(_cabecera is null)"
-                            OnConfirmar="FinalizarAsync" />
+            @* Finalizar exige el control de cuadre de R3: teclear cuántos productos quedan
+               pendientes y cotejarlo contra el contador real del pedido. *@
+            <button class="r5-btn r5-btn--primario" @onclick="AbrirFinalizarAsync"
+                    disabled="@(_ocupado || _cabecera is null)">Finalizar</button>
         </div>
     </div>
+
+    @if (_verificandoFinal)
+    {
+        <form class="r5-tarjeta r5-columna r5-ancho-form" @onsubmit="FinalizarVerificadoAsync">
+            <h3>Finalizar preparación del pedido @Pedido</h3>
+            <p class="r5-texto-suave r5-texto-sm">
+                Control de cuadre: cuenta los productos que quedan SIN preparar y teclea el número.
+                Productos preparados hasta ahora: <strong>@(_cabecera?.Preparados)</strong>.
+            </p>
+            <div class="r5-campo" style="max-width: 240px;">
+                <label for="pendientesFin">Productos pendientes</label>
+                <input id="pendientesFin" class="r5-input r5-input--numero" type="number" inputmode="numeric" min="0"
+                       @bind="_pendientesTecleados" disabled="@_ocupado" />
+            </div>
+            <div class="r5-fila">
+                <button type="submit" class="r5-btn r5-btn--primario" disabled="@(_ocupado || _pendientesTecleados is null)">
+                    @(_ocupado ? "Finalizando…" : "Confirmar y finalizar")
+                </button>
+                <button type="button" class="r5-btn r5-btn--fantasma" @onclick="() => _verificandoFinal = false">Cancelar</button>
+            </div>
+        </form>
+    }
 
     <Aviso Tipo="@_tipoAviso" Mensaje="@_aviso" />
 
@@ -331,10 +351,43 @@
         }
     }
 
-    // Finalizar cierra la preparación del pedido (estado preparado). Irreversible desde la app.
-    private async Task FinalizarAsync()
+    // --- Finalizar con control de cuadre (paridad R3: Bfinalizar_Click) ---
+    private bool _verificandoFinal;
+    private int? _pendientesTecleados;
+
+    // Abre la verificación con el contador de pendientes RECIÉN leído del servidor
+    // (la cabecera en memoria puede estar desfasada tras el picking).
+    private async Task AbrirFinalizarAsync()
     {
-        if (_ocupado || _fecha is null) return;
+        if (_ocupado || _fecha is null || !Sesion.Autenticado) return;
+        _ocupado = true;
+        _aviso = "";
+        try
+        {
+            var cab = await Preparaciones.GetAsync(_fecha.Value, Pedido, Sesion.Usuario!.CodUsuario,
+                Sesion.Usuario.Almacen.SoloConStock);
+            if (cab.Ok && cab.Datos is not null) _cabecera = cab.Datos;
+            _pendientesTecleados = null;
+            _verificandoFinal = true;
+        }
+        finally
+        {
+            _ocupado = false;
+        }
+    }
+
+    // Finalizar cierra la preparación del pedido (estado preparado). Irreversible desde la
+    // app, por eso exige cuadrar el conteo de pendientes con el real (como R3).
+    private async Task FinalizarVerificadoAsync()
+    {
+        if (_ocupado || _fecha is null || _cabecera is null || _pendientesTecleados is null) return;
+
+        if (_pendientesTecleados.Value != _cabecera.CountPendientes)
+        {
+            MostrarError($"El conteo no cuadra: has tecleado {_pendientesTecleados} pendientes y el pedido tiene {_cabecera.CountPendientes}. Revisa el recorrido antes de finalizar.");
+            return;
+        }
+
         _ocupado = true;
         try
         {
