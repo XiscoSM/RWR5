@@ -3,6 +3,8 @@
    línea a línea) es la fase siguiente. *@
 @page "/preparacion/{FechaRuta}/{Pedido:int}"
 @inject PreparacionService Preparaciones
+@inject ReportService Reports
+@inject IVisorArchivos Visor
 @inject SesionUsuario Sesion
 @inject NavigationManager Nav
 
@@ -16,10 +18,18 @@
             <button class="@(!_verPreparadas ? "activo" : "")" @onclick="() => CambiarVistaAsync(false)">Pendientes</button>
             <button class="@(_verPreparadas ? "activo" : "")" @onclick="() => CambiarVistaAsync(true)">Preparadas</button>
         </div>
-        <button class="r5-btn r5-btn--primario" style="margin-left:auto" @onclick="AsignarYPrepararAsync"
-                disabled="@(_asignando || _fecha is null)">
-            @(_asignando ? "Asignando…" : "Preparar →")
-        </button>
+        <div class="r5-fila" style="margin-left:auto">
+            @* Documento de preparación en papel (mismo RDLC PedidoCentral de R3, report 51). *@
+            <button class="r5-btn r5-btn--secundario" @onclick="AbrirPdfAsync"
+                    disabled="@(_generandoPdf || _fecha is null)">
+                <Icono Nombre="informes" Clase="r5-barra__icono" />
+                @(_generandoPdf ? "Generando…" : "PDF")
+            </button>
+            <button class="r5-btn r5-btn--primario" @onclick="AsignarYPrepararAsync"
+                    disabled="@(_asignando || _fecha is null)">
+                @(_asignando ? "Asignando…" : "Preparar →")
+            </button>
+        </div>
     </div>
 
     <Aviso Mensaje="@_errorAsignar" />
@@ -166,4 +176,26 @@
     }
 
     private void Volver() => Nav.NavigateTo("/preparacion");
+
+    // Documento de preparación en papel: usa el RDLC de pedido central (report 51 de R3)
+    // con el almacén del preparador como central.
+    private bool _generandoPdf;
+
+    private async Task AbrirPdfAsync()
+    {
+        if (_generandoPdf || _fecha is null || !Sesion.Autenticado) return;
+        _generandoPdf = true;
+        _errorAsignar = "";
+        try
+        {
+            var r = await Reports.GetPedidoCentralPdfAsync(Pedido, _fecha.Value,
+                estado: 1, almCentral: Sesion.Usuario!.Almacen.CodAlm);
+            if (!r.Ok || r.Datos is null) { _errorAsignar = "No se pudo generar el PDF: " + r.Error; return; }
+            await Visor.AbrirAsync($"Preparacion_{Pedido}.pdf", r.Datos);
+        }
+        finally
+        {
+            _generandoPdf = false;
+        }
+    }
 }

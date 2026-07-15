@@ -2,6 +2,8 @@
    precios y valores solo si el tipo los usa), igual que hace R3. Consulta. *@
 @page "/informes/{NumInforme:int}"
 @inject InformeService Informes
+@inject ReportService Reports
+@inject IVisorArchivos Visor
 @inject SesionUsuario Sesion
 @inject NavigationManager Nav
 
@@ -17,16 +19,22 @@
                 @(_registrado ? "Registrado" : "Pendiente")
             </span>
         }
-        @if (Reg == 0 && !_registrado)
-        {
-            <div class="r5-fila" style="margin-left:auto">
+        <div class="r5-fila" style="margin-left:auto">
+            @* PDF del informe agrupado por tipo/fecha/destino (RDLC de R3 ya en la API). *@
+            <button class="r5-btn r5-btn--secundario" @onclick="AbrirPdfAsync"
+                    disabled="@(_generandoPdf || _cargando || _tipo is null)">
+                <Icono Nombre="informes" Clase="r5-barra__icono" />
+                @(_generandoPdf ? "Generando…" : "PDF")
+            </button>
+            @if (Reg == 0 && !_registrado)
+            {
                 <BotonConfirmar Texto="Registrar informe"
                                 Pregunta="@($"¿Registrar el informe {NumInforme} con {_lineas.Count} líneas?")"
                                 TextoOcupado="Registrando…" Ocupado="@_registrando"
                                 Deshabilitado="@(_cargando || _lineas.Count == 0 || _error.Length > 0)"
                                 OnConfirmar="RegistrarAsync" />
-            </div>
-        }
+            }
+        </div>
     </div>
 
     <Aviso Tipo="@_tipoAviso" Mensaje="@_aviso" />
@@ -93,6 +101,32 @@
 
 @code {
     [Parameter] public int NumInforme { get; set; }
+
+    // Impresión del informe agrupado (tipo/fecha/destino de la cabecera cargada).
+    private bool _generandoPdf;
+    private DateTime _fechaInforme = DateTime.Today;
+    private short _almDestInforme;
+
+    private async Task AbrirPdfAsync()
+    {
+        if (_generandoPdf || _tipo is null) return;
+        _generandoPdf = true;
+        try
+        {
+            var r = await Reports.GetInformeAgrupPdfAsync(_tipo.Tipo, _fechaInforme, _almDestInforme);
+            if (!r.Ok || r.Datos is null)
+            {
+                _tipoAviso = "error";
+                _aviso = "No se pudo generar el PDF: " + r.Error;
+                return;
+            }
+            await Visor.AbrirAsync($"Informe_{_tipo.Tipo}_{_fechaInforme:yyyyMMdd}.pdf", r.Datos);
+        }
+        finally
+        {
+            _generandoPdf = false;
+        }
+    }
 
     /// <summary>Estado desde la bandeja (0=pendiente, 1=registrado); null en deep-link = solo consulta.</summary>
     [Parameter, SupplyParameterFromQuery(Name = "reg")] public int? Reg { get; set; }
@@ -176,6 +210,8 @@
             {
                 Reg = cab.Estado ? 1 : 0;
                 _registrado = cab.Estado;
+                _fechaInforme = cab.Fecha;
+                _almDestInforme = cab.AlmDest?.CodAlm ?? (short)0;
             }
             _tipo = tareaInforme.Result.Datos?.TipoInforme;
             // La cabecera trae el tipo sin su configuración de campos: se completa del catálogo.

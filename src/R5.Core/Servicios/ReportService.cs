@@ -15,13 +15,23 @@ public sealed class ReportService
         _api = api;
     }
 
-    /// <summary>GET Report/Traspaso/{num}/{fecha} — PDF del documento de traspaso.</summary>
-    public Task<ApiRespuesta<byte[]>> GetTraspasoPdfAsync(int numTraspaso, DateTime fecha, CancellationToken ct = default)
-        => _api.GetBytesAsync($"Report/Traspaso/{numTraspaso}/{fecha:yyyy-MM-dd}", ct);
+    /// <summary>GET Report/Traspaso/{num}/{fecha} — PDF del documento de traspaso.
+    /// verCostes/detallado = variantes del RDLC de R3 (informe detallado con costes).</summary>
+    public Task<ApiRespuesta<byte[]>> GetTraspasoPdfAsync(int numTraspaso, DateTime fecha, bool verCostes = false, bool detallado = false, CancellationToken ct = default)
+        => _api.GetBytesAsync($"Report/Traspaso/{numTraspaso}/{fecha:yyyy-MM-dd}?verCostes={verCostes}&detallado={detallado}", ct);
 
-    /// <summary>GET Report/PedidoCentral/{num}/{fecha} — PDF del documento de pedido a central.</summary>
-    public Task<ApiRespuesta<byte[]>> GetPedidoCentralPdfAsync(int numPedido, DateTime fecha, byte estado, short almCentral, bool vertical = false, CancellationToken ct = default)
-        => _api.GetBytesAsync($"Report/PedidoCentral/{numPedido}/{fecha:yyyy-MM-dd}?estado={estado}&almCentral={almCentral}&vertical={vertical}", ct);
+    /// <summary>GET Report/PedidoCentral/{num}/{fecha} — PDF del documento de pedido a central.
+    /// vertical = rdlc vertical; saltoPasillo = salto de página por pasillo; conCantEnv = cantidad por envase.</summary>
+    public Task<ApiRespuesta<byte[]>> GetPedidoCentralPdfAsync(int numPedido, DateTime fecha, byte estado, short almCentral, bool vertical = false, bool saltoPasillo = false, bool conCantEnv = false, CancellationToken ct = default)
+        => _api.GetBytesAsync($"Report/PedidoCentral/{numPedido}/{fecha:yyyy-MM-dd}?estado={estado}&almCentral={almCentral}&vertical={vertical}&saltoPasillo={saltoPasillo}&conCantEnv={conCantEnv}", ct);
+
+    /// <summary>GET Report/PedidoCentralGama/{gama}/{fecha} — PDF de pedidos a central agrupados por gama.</summary>
+    public Task<ApiRespuesta<byte[]>> GetPedidoCentralGamaPdfAsync(int gama, DateTime fecha, byte estado, short almCentral, CancellationToken ct = default)
+        => _api.GetBytesAsync($"Report/PedidoCentralGama/{gama}/{fecha:yyyy-MM-dd}?estado={estado}&almCentral={almCentral}", ct);
+
+    /// <summary>GET Report/InformeManualAgrup/{tipo}/{fecha} — PDF de informes manuales agrupados.</summary>
+    public Task<ApiRespuesta<byte[]>> GetInformeAgrupPdfAsync(byte tipo, DateTime fecha, short almDest, CancellationToken ct = default)
+        => _api.GetBytesAsync($"Report/InformeManualAgrup/{tipo}/{fecha:yyyy-MM-dd}?almDest={almDest}", ct);
 }
 
 /// <summary>Abre un archivo en el visor de la plataforma (impl. en el host MAUI).</summary>

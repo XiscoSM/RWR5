@@ -6,6 +6,8 @@
 @page "/traspasos/alta/{FechaRuta}/{NumRuta:int}"
 @inject TraspasoService Traspasos
 @inject AlmacenService Almacenes
+@inject ReportService Reports
+@inject IVisorArchivos Visor
 @inject SesionUsuario Sesion
 @inject NavigationManager Nav
 @inject IJSRuntime JS
@@ -381,6 +383,14 @@
         {
             var respuesta = await Traspasos.RegistrarAsync(_numTraspaso, _fecha, Sesion.Usuario!.CodUsuario);
             if (!respuesta.Ok) { MostrarError(respuesta.Error); return; }
+
+            // Documento en papel nada más registrar (paridad con la impresión automática
+            // de R3): si el PDF falla, no bloquea el flujo — se puede reabrir del detalle.
+            var pdf = await Reports.GetTraspasoPdfAsync(_numTraspaso, _fecha);
+            if (pdf.Ok && pdf.Datos is not null)
+            {
+                try { await Visor.AbrirAsync($"Traspaso_{_numTraspaso}.pdf", pdf.Datos); } catch { }
+            }
 
             Nav.NavigateTo($"/traspasos/{_fecha:yyyy-MM-dd}/{_numTraspaso}");
         }

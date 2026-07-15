@@ -21,9 +21,14 @@ public sealed class HorariosService
     public Task<ApiRespuesta<HorarioSemana>> GetSemanaAsync(short codAlm, byte seccion, bool historico, CancellationToken ct = default)
         => _api.GetAsync<HorarioSemana>($"Horarios/Semana/{codAlm}/{seccion}?historico={historico}", ct);
 
-    /// <summary>GET Report/Horarios|HorarioHistorico — PDF del cuadro (mismos rdlc de R3).</summary>
-    public Task<ApiRespuesta<byte[]>> GetPdfAsync(short codAlm, byte seccion, bool historico, CancellationToken ct = default)
-        => _api.GetBytesAsync(historico
-            ? $"Report/HorarioHistorico/{codAlm}/{seccion}"
-            : $"Report/Horarios/{codAlm}/{seccion}", ct);
+    /// <summary>GET Report/Horarios|HorarioHistorico — PDF del cuadro (mismos rdlc de R3).
+    /// fechaIni/fechaFin acotan las semanas impresas (el endpoint las acepta; sin ellas
+    /// imprime toda la sección).</summary>
+    public Task<ApiRespuesta<byte[]>> GetPdfAsync(short codAlm, byte seccion, bool historico, DateTime? fechaIni = null, DateTime? fechaFin = null, CancellationToken ct = default)
+    {
+        string rango = fechaIni is null ? "" : $"?fechaIni={fechaIni:yyyy-MM-dd}&fechaFin={(fechaFin ?? fechaIni):yyyy-MM-dd}";
+        return _api.GetBytesAsync(historico
+            ? $"Report/HorarioHistorico/{codAlm}/{seccion}{rango}"
+            : $"Report/Horarios/{codAlm}/{seccion}{rango}", ct);
+    }
 }

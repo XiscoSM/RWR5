@@ -42,8 +42,27 @@
                 <Icono Nombre="informes" Clase="r5-barra__icono" />
                 @(_generandoPdf ? "Generando…" : "PDF")
             </button>
+            <button class="r5-btn r5-btn--fantasma" @onclick="() => _verOpcionesPdf = !_verOpcionesPdf"
+                    title="Opciones de impresión">⚙</button>
         </div>
     </div>
+
+    @if (_verOpcionesPdf)
+    {
+        @* Variantes del documento de R3: vertical, salto de página por pasillo y
+           cantidad por envase. Se aplican al próximo PDF. *@
+        <div class="r5-tarjeta r5-fila" style="flex-wrap: wrap; gap: var(--esp-4);">
+            <label class="r5-fila" style="gap: var(--esp-2); cursor: pointer;">
+                <input type="checkbox" @bind="_pdfVertical" /> <span>Formato vertical</span>
+            </label>
+            <label class="r5-fila" style="gap: var(--esp-2); cursor: pointer;">
+                <input type="checkbox" @bind="_pdfSaltoPasillo" /> <span>Salto de página por pasillo</span>
+            </label>
+            <label class="r5-fila" style="gap: var(--esp-2); cursor: pointer;">
+                <input type="checkbox" @bind="_pdfConCantEnv" /> <span>Cantidad por envase</span>
+            </label>
+        </div>
+    }
 
     <Aviso Mensaje="@_errorPdf" />
     <Aviso Tipo="@_tipoAvisoRegistro" Mensaje="@_avisoRegistro" />
@@ -181,6 +200,12 @@
         }
     }
 
+    // Opciones de impresión de R3 (variantes del mismo RDLC).
+    private bool _pdfVertical;
+    private bool _pdfSaltoPasillo;
+    private bool _pdfConCantEnv;
+    private bool _verOpcionesPdf;
+
     private async Task AbrirPdfAsync()
     {
         if (_generandoPdf || _fecha is null) return;
@@ -190,7 +215,8 @@
         try
         {
             var respuesta = await Reports.GetPedidoCentralPdfAsync(
-                NumPedido, _fecha.Value, _estado ?? 1, (short)(AlmCentralQuery ?? 0));
+                NumPedido, _fecha.Value, _estado ?? 1, (short)(AlmCentralQuery ?? 0),
+                vertical: _pdfVertical, saltoPasillo: _pdfSaltoPasillo, conCantEnv: _pdfConCantEnv);
             if (!respuesta.Ok || respuesta.Datos is null)
             {
                 _errorPdf = respuesta.Error;

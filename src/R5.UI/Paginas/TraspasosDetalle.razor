@@ -25,6 +25,11 @@
                 <Icono Nombre="informes" Clase="r5-barra__icono" />
                 @(_generandoPdf ? "Generando…" : "PDF")
             </button>
+            @* Variante de R3: informe detallado con costes (report 52). *@
+            <button class="r5-btn r5-btn--fantasma" @onclick="() => AbrirPdfVarianteAsync(true)"
+                    disabled="@(_generandoPdf || _fecha is null)" title="Informe detallado con costes">
+                PDF costes
+            </button>
             @if (Reg == 0 && !_registrado)
             {
                 @* Retomar: vuelve al alta con este traspaso cargado para seguir añadiendo. *@
@@ -149,7 +154,10 @@
     private string _errorPdf = "";
 
     // El PDF se renderiza en el servidor con el mismo .rdlc de R3; aquí solo se abre.
-    private async Task AbrirPdfAsync()
+    private async Task AbrirPdfAsync() => await AbrirPdfVarianteAsync(false);
+
+    // detallado=true → informe detallado con costes (variante del RDLC de R3).
+    private async Task AbrirPdfVarianteAsync(bool detallado)
     {
         if (_generandoPdf || _fecha is null) return;
 
@@ -157,13 +165,14 @@
         _errorPdf = "";
         try
         {
-            var respuesta = await Reports.GetTraspasoPdfAsync(NumTraspaso, _fecha.Value);
+            var respuesta = await Reports.GetTraspasoPdfAsync(NumTraspaso, _fecha.Value,
+                verCostes: detallado, detallado: detallado);
             if (!respuesta.Ok || respuesta.Datos is null)
             {
                 _errorPdf = respuesta.Error;
                 return;
             }
-            await Visor.AbrirAsync($"Traspaso_{NumTraspaso}.pdf", respuesta.Datos);
+            await Visor.AbrirAsync($"Traspaso_{NumTraspaso}{(detallado ? "_detallado" : "")}.pdf", respuesta.Datos);
         }
         catch (Exception ex)
         {
