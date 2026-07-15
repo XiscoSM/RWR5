@@ -78,15 +78,22 @@
                     </select>
                 </div>
 
-                <div class="r5-campo">
-                    <label for="empleadoDest">Nº de empleado para quien se solicita</label>
-                    <input id="empleadoDest" class="r5-input r5-input--numero" type="text" inputmode="numeric"
-                           @bind="_empleadoDestNum" @bind:event="oninput" disabled="@_enviandoSolicitud" />
-                    @if (_empleadoDest is not null && _empleadoDestNum == _empleadoDest.Empleado)
-                    {
-                        <span class="r5-texto-suave r5-texto-sm">@_empleadoDest.Empleado — @_empleadoDest.Nombre</span>
-                    }
-                </div>
+                @if (_tipoSolicitud == 15)
+                {
+                    <span class="r5-texto-suave r5-texto-sm">Gestión personal: se solicita para ti (@_empleado.Empleado — @_empleado.Nombre).</span>
+                }
+                else
+                {
+                    <div class="r5-campo">
+                        <label for="empleadoDest">Nº de empleado para quien se solicita</label>
+                        <input id="empleadoDest" class="r5-input r5-input--numero" type="text" inputmode="numeric"
+                               @bind="_empleadoDestNum" @bind:event="oninput" disabled="@_enviandoSolicitud" />
+                        @if (_empleadoDest is not null && _empleadoDestNum == _empleadoDest.Empleado)
+                        {
+                            <span class="r5-texto-suave r5-texto-sm">@_empleadoDest.Empleado — @_empleadoDest.Nombre</span>
+                        }
+                    </div>
+                }
 
                 @if (GestionSel is not null)
                 {
@@ -289,9 +296,11 @@
     private GestionEmpresaUser? _firmando;
     private int? _numFirma;
 
-    // --- Solicitudes (EPI/Vacaciones/Madisa): tipos y flujo del canon R3 ---
+    // --- Solicitudes (EPI/Vacaciones/Madisa/Datos de contacto): tipos y flujo del canon R3 ---
+    // El tipo 15 (cambio de titular y mail de contacto) es siempre una gestión propia:
+    // no se pide empleado destino (Solicitud_ValidarEmpleado de R3).
     private static readonly (byte, string)[] _tiposSolicitud =
-        { (18, "Solicitar EPI"), (16, "Solicitar vacaciones"), (2, "Acceso Madisa") };
+        { (18, "Solicitar EPI"), (16, "Solicitar vacaciones"), (2, "Acceso Madisa"), (15, "Datos de contacto") };
     private readonly Dictionary<byte, List<GestionEmpresa>> _catalogos = new();
     private byte _tipoSolicitud;           // 0 = asistente cerrado
     private int _idGestionSel;
