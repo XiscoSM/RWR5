@@ -48,6 +48,11 @@ public sealed class PedidoCompraService
     public Task<ApiRespuesta> DeleteLineaAsync(int numPedido, int linea, CancellationToken ct = default)
         => _api.DeleteAsync($"PedidoCompra/{numPedido}/Linea/{linea}", ct);
 
+    /// <summary>GET PedidoCompra/{num}/Catalogo/{gama}?codAlm= — catálogo de la gama con lo
+    /// ya pedido en el mismo listado (grid único de R3).</summary>
+    public Task<ApiRespuesta<List<GamaProdCatalogo>>> GetCatalogoAsync(int numPedido, int codGama, short codAlm, CancellationToken ct = default)
+        => _api.GetAsync<List<GamaProdCatalogo>>($"PedidoCompra/{numPedido}/Catalogo/{codGama}?codAlm={codAlm}", ct);
+
     /// <summary>POST PedidoCompra/{num}/Registrar/{codUsuario}/{fechaPrevEnvio} — registra el pedido.</summary>
     public Task<ApiRespuesta> RegistrarAsync(int numPedido, short codUsuario, DateTime fechaPrevEnvio, CancellationToken ct = default)
         => _api.PostAsync($"PedidoCompra/{numPedido}/Registrar/{codUsuario}/{fechaPrevEnvio:yyyy-MM-dd}", cuerpo: null, ct);

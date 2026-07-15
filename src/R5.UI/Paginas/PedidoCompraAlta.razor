@@ -89,11 +89,59 @@
             </form>
             @* Alternativa de búsqueda: por la referencia con la que el PROVEEDOR nombra el
                producto (viene en su catálogo/albarán), no por nuestro código. *@
-            <label class="r5-fila" style="gap: var(--esp-2); cursor: pointer;">
-                <input type="checkbox" @bind="_porRefProv" />
-                <span class="r5-texto-suave">Buscar por referencia del proveedor</span>
-            </label>
+            <div class="r5-fila" style="flex-wrap: wrap;">
+                <label class="r5-fila" style="gap: var(--esp-2); cursor: pointer;">
+                    <input type="checkbox" @bind="_porRefProv" />
+                    <span class="r5-texto-suave">Buscar por referencia del proveedor</span>
+                </label>
+                <button class="r5-btn r5-btn--secundario" style="margin-left:auto"
+                        @onclick="ToggleCatalogoAsync" disabled="@_cargandoCatalogo">
+                    @(_verCatalogo ? "Ocultar catálogo" : _cargandoCatalogo ? "Cargando…" : "Catálogo de la gama")
+                </button>
+            </div>
         </div>
+
+        @* Catálogo navegable de la gama (grid único de R3): todos los productos con lo ya
+           pedido resaltado; pedir = tocar la fila (equivale a teclear su código). *@
+        @if (_verCatalogo)
+        {
+            <div class="r5-tarjeta r5-columna">
+                <div class="r5-fila" style="flex-wrap: wrap;">
+                    <input class="r5-input" style="flex:1; min-width: 200px;" type="text"
+                           placeholder="Buscar por descripción, EAN o ref. proveedor"
+                           @bind="_filtroCatalogo" @bind:event="oninput" />
+                    <select class="r5-select" style="min-width: 160px;" @onchange="ElegirGrupo">
+                        <option value="">Todos los grupos</option>
+                        @foreach (var g in _grupos)
+                        {
+                            <option value="@g" selected="@(g == _grupoElegido)">@(g.Length == 0 ? "(sin grupo)" : g)</option>
+                        }
+                    </select>
+                    <span class="r5-texto-suave r5-texto-sm">
+                        Líneas: @_lineasDoc.Count · Cajas: @_lineasDoc.Sum(l => l.Cajas) · Unidades: @Cantidad(_lineasDoc.Sum(l => l.Cant), true)
+                    </span>
+                </div>
+                <div class="r5-tabla-scroll" style="max-height: 420px;">
+                    <table class="r5-tabla">
+                        <thead><tr><th>Cód.</th><th>Producto</th><th>Grupo</th><th class="num">Cajas ped.</th><th class="num">Cant. ped.</th><th>Ubicación</th></tr></thead>
+                        <tbody>
+                            @foreach (var p in CatalogoFiltrado)
+                            {
+                                <tr @key="p.Prod" style="cursor:pointer; @(p.CantPed > 0 ? "background: var(--c-exito-fondo);" : "")"
+                                    @onclick="() => PedirDesdeCatalogoAsync(p)">
+                                    <td>@p.Prod</td>
+                                    <td>@p.DescProdCompleta</td>
+                                    <td>@p.Grupo</td>
+                                    <td class="num">@(p.CajasPed > 0 ? p.CajasPed.ToString() : "")</td>
+                                    <td class="num">@(p.CantPed > 0 ? Cantidad(p.CantPed, true) : "")</td>
+                                    <td>@p.Ubicacion</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
 
         <Aviso Tipo="@_tipoAviso" Mensaje="@_aviso" />
 
@@ -197,6 +245,66 @@
     private bool _enfocarBuscador;
     private bool _porRefProv;          // buscar por referencia del proveedor en vez de EAN/código
     private int _lineaBorrando;        // línea con confirmación de borrado abierta (0 = ninguna)
+
+    // Catálogo navegable de la gama (grid único de R3).
+    private bool _verCatalogo;
+    private bool _cargandoCatalogo;
+    private List<GamaProdCatalogo> _catalogo = new();
+    private List<string> _grupos = new();
+    private string _grupoElegido = "";
+    private string _filtroCatalogo = "";
+
+    private IEnumerable<GamaProdCatalogo> CatalogoFiltrado
+    {
+        get
+        {
+            IEnumerable<GamaProdCatalogo> filas = _catalogo;
+            if (_grupoElegido.Length > 0) filas = filas.Where(p => p.Grupo == _grupoElegido);
+            string f = _filtroCatalogo.Trim();
+            if (f.Length > 0)
+                filas = filas.Where(p =>
+                    p.DescProdCompleta.Contains(f, StringComparison.OrdinalIgnoreCase)
+                    || p.Ean.ToString().Contains(f)
+                    || p.ProdProveedor.Contains(f, StringComparison.OrdinalIgnoreCase)
+                    || p.Prod.ToString().Contains(f));
+            return filas;
+        }
+    }
+
+    private async Task ToggleCatalogoAsync()
+    {
+        if (_verCatalogo) { _verCatalogo = false; return; }
+        await CargarCatalogoAsync();
+        _verCatalogo = _catalogo.Count > 0;
+    }
+
+    private async Task CargarCatalogoAsync()
+    {
+        if (_gamaElegida is null || !Sesion.Autenticado) return;
+        _cargandoCatalogo = true;
+        try
+        {
+            var r = await Pedidos.GetCatalogoAsync(_numPedido, _gamaElegida.Gama.CodGama,
+                Sesion.Usuario!.Almacen.CodAlm);
+            if (!r.Ok) { MostrarError(r.Error); return; }
+            _catalogo = r.Datos ?? new();
+            _grupos = _catalogo.Select(p => p.Grupo).Distinct().OrderBy(g => g).ToList();
+        }
+        finally
+        {
+            _cargandoCatalogo = false;
+        }
+    }
+
+    private void ElegirGrupo(ChangeEventArgs e) => _grupoElegido = e.Value?.ToString() ?? "";
+
+    // Pedir por toque: equivale a teclear el código del producto en el buscador.
+    private async Task PedirDesdeCatalogoAsync(GamaProdCatalogo p)
+    {
+        _porRefProv = false;
+        _codigo = p.Prod.ToString();
+        await BuscarProductoAsync();
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -464,6 +572,8 @@
             _lineasAnadidas = _lineasDoc.Count;
         }
         _cargandoLineas = false;
+        // El resaltado de "ya pedido" del catálogo sale del servidor: se recarga con las líneas.
+        if (_verCatalogo) await CargarCatalogoAsync();
         StateHasChanged();
     }
 

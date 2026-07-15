@@ -15,6 +15,20 @@ public sealed class PedidoCompra
 }
 
 /// <summary>Línea de pedido a proveedor (canon R4).</summary>
+/// <summary>Fila del catálogo de la gama con lo ya pedido (grid único de R3,
+/// PROC_PedidoGamaProd_Select): permite pedir por toque sin escanear.</summary>
+public sealed class GamaProdCatalogo
+{
+    public string Grupo { get; set; } = "";
+    public int Prod { get; set; }
+    public string DescProdCompleta { get; set; } = "";
+    public short CajasPed { get; set; }
+    public decimal CantPed { get; set; }
+    public long Ean { get; set; }
+    public string Ubicacion { get; set; } = "";
+    public string ProdProveedor { get; set; } = "";
+}
+
 public sealed class PedidoCompraLin
 {
     public int Linea { get; set; }
