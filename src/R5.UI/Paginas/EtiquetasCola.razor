@@ -1,0 +1,356 @@
+@* Cola de etiquetas EanList (port del módulo 12 de R3 / Delphi "Fex Etiqueta"):
+   pendientes por origen (cambios de PVP del día vs pedidas desde terminal), impresión
+   por formato (TipoPrint 0-5, un PDF por formato), carga/recarga del día y marcado de
+   impresas. Debajo, las operativas puntuales: etiqueta manual, serie numérica,
+   etiquetas de un albarán y etiquetas de bulto de traspaso. *@
+@page "/etiquetas/cola"
+@inject EanListService EanList
+@inject IVisorArchivos Visor
+@inject SesionUsuario Sesion
+@inject NavigationManager Nav
+
+<GuardiaModulo CodMenu="12">
+<div class="r5-columna">
+
+    <div class="r5-fila" style="flex-wrap: wrap;">
+        <button class="r5-btn r5-btn--secundario" @onclick='() => Nav.NavigateTo("/etiquetas")'>← Etiquetas</button>
+        <h2>Cola de etiquetas</h2>
+        <div class="r5-segmento">
+            <button class="@(!_etiqPda ? "activo" : "")" @onclick="() => CambiarOrigenAsync(false)" disabled="@_ocupado">Cambios de PVP (día)</button>
+            <button class="@(_etiqPda ? "activo" : "")" @onclick="() => CambiarOrigenAsync(true)" disabled="@_ocupado">Pedidas desde terminal</button>
+        </div>
+        <button class="r5-btn r5-btn--fantasma" style="margin-left:auto" @onclick="CargarColaAsync" disabled="@_ocupado">Actualizar</button>
+    </div>
+
+    <div class="r5-tarjeta r5-fila" style="flex-wrap: wrap; gap: var(--esp-4);">
+        @if (!_etiqPda)
+        {
+            <BotonConfirmar Texto="Cargar cambios del día"
+                            Pregunta="¿Cargar en la cola todos los cambios de PVP del día del almacén?"
+                            TextoOcupado="Cargando…" Ocupado="@_ocupado" OnConfirmar="() => CargarDiaAsync(1)" />
+            <BotonConfirmar Texto="Recargar (reimpresión)"
+                            Pregunta="¿Recargar la cola para reimprimir los cambios ya marcados?"
+                            TextoOcupado="Cargando…" Ocupado="@_ocupado" OnConfirmar="() => CargarDiaAsync(2)" />
+        }
+        <label class="r5-fila" style="gap: var(--esp-2); cursor: pointer;">
+            <input type="checkbox" @bind="_soloEsteEquipo" />
+            <span>Solo este equipo (@_equipo)</span>
+        </label>
+        <label class="r5-fila" style="gap: var(--esp-2); cursor: pointer;">
+            <input type="checkbox" @bind="_frutaConPrecio" />
+            <span>Fruta con precio</span>
+        </label>
+        <button class="r5-btn r5-btn--primario" @onclick="ImprimirColaAsync" disabled="@(_ocupado || _cola.Count == 0)">
+            @(_imprimiendo ? "Imprimiendo…" : $"Imprimir cola ({_cola.Count})")
+        </button>
+        <BotonConfirmar Texto="Marcar impresas"
+                        Pregunta="¿Borrar de la cola las etiquetas ya impresas? No se puede deshacer."
+                        TextoOcupado="Marcando…" Ocupado="@_ocupado" OnConfirmar="MarcarAsync" />
+    </div>
+
+    <Aviso Tipo="@_tipoAviso" Mensaje="@_aviso" />
+
+    @if (_ocupado && !_imprimiendo)
+    {
+        <Cargando Texto="Cargando cola…" />
+    }
+    else if (_cola.Count == 0)
+    {
+        <div class="r5-cargando">
+            <Icono Nombre="etiquetas" Clase="r5-modulo__icono" />
+            <span>No hay etiquetas pendientes de @(_etiqPda ? "los terminales" : "cambios de PVP").</span>
+        </div>
+    }
+    else
+    {
+        <div class="r5-tarjeta r5-tabla-scroll">
+            <table class="r5-tabla">
+                <thead><tr><th>Cód.</th><th>EAN</th><th>Producto</th><th class="num">PVP</th><th>Formato</th><th>Equipo</th></tr></thead>
+                <tbody>
+                    @foreach (var l in _cola)
+                    {
+                        <tr @key="l.NLinea">
+                            <td>@l.CodProducto</td>
+                            <td>@l.Ean</td>
+                            <td>@l.Descripcio</td>
+                            <td class="num">@Moneda(l.Pvp)</td>
+                            <td>@l.DescFormato</td>
+                            <td>@l.Equipo</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    @* ---------- Operativas puntuales (paneles del módulo R3) ---------- *@
+    <div class="r5-fila" style="flex-wrap: wrap; align-items: stretch; gap: var(--esp-4);">
+
+        <form class="r5-tarjeta r5-columna" style="flex:1; min-width: 280px;" @onsubmit="ImprimirManualAsync">
+            <h3>Etiqueta manual</h3>
+            <div class="r5-campo">
+                <label for="manEan">EAN (hasta 13 dígitos; si faltan, se calcula el control)</label>
+                <input id="manEan" class="r5-input r5-input--numero" type="text" inputmode="numeric" maxlength="13" @bind="_manEan" />
+            </div>
+            <div class="r5-campo">
+                <label for="manTexto">Texto</label>
+                <input id="manTexto" class="r5-input" type="text" maxlength="40" @bind="_manTexto" />
+            </div>
+            <div class="r5-fila">
+                <div class="r5-campo" style="flex:1">
+                    <label for="manPvp">PVP € (opcional)</label>
+                    <input id="manPvp" class="r5-input r5-input--numero" type="number" step="0.01" min="0" @bind="_manPvp" />
+                </div>
+                <div class="r5-campo" style="flex:1">
+                    <label for="manCopias">Copias (1-99)</label>
+                    <input id="manCopias" class="r5-input r5-input--numero" type="number" min="1" max="99" @bind="_manCopias" />
+                </div>
+            </div>
+            <button type="submit" class="r5-btn r5-btn--secundario" disabled="@(_ocupado || string.IsNullOrWhiteSpace(_manEan))">Imprimir</button>
+        </form>
+
+        <form class="r5-tarjeta r5-columna" style="flex:1; min-width: 280px;" @onsubmit="ImprimirSerieAsync">
+            <h3>Serie numérica</h3>
+            <div class="r5-campo">
+                <label for="serInicio">Número inicial (hasta 12 dígitos)</label>
+                <input id="serInicio" class="r5-input r5-input--numero" type="text" inputmode="numeric" maxlength="12" @bind="_serInicioTexto" />
+            </div>
+            <div class="r5-fila">
+                <div class="r5-campo" style="flex:1">
+                    <label for="serCant">Cantidad (1-500)</label>
+                    <input id="serCant" class="r5-input r5-input--numero" type="number" min="1" max="500" @bind="_serCantidad" />
+                </div>
+                <div class="r5-campo" style="flex:1">
+                    <label for="serTexto">Texto</label>
+                    <input id="serTexto" class="r5-input" type="text" maxlength="40" @bind="_serTexto" />
+                </div>
+            </div>
+            <button type="submit" class="r5-btn r5-btn--secundario" disabled="@(_ocupado || string.IsNullOrWhiteSpace(_serInicioTexto))">Imprimir serie</button>
+        </form>
+
+        <form class="r5-tarjeta r5-columna" style="flex:1; min-width: 280px;" @onsubmit="ImprimirAlbaranAsync">
+            <h3>Etiquetas de un albarán</h3>
+            <div class="r5-fila">
+                <div class="r5-campo" style="flex:1">
+                    <label for="albNum">Nº albarán</label>
+                    <input id="albNum" class="r5-input" type="text" maxlength="20" @bind="_albNumero" />
+                </div>
+                <div class="r5-campo" style="flex:1">
+                    <label for="albFecha">Fecha</label>
+                    <input id="albFecha" class="r5-input" type="date" @bind="_albFecha" />
+                </div>
+            </div>
+            <label class="r5-fila" style="gap: var(--esp-2); cursor: pointer;">
+                <input type="checkbox" @bind="_albConPvp" />
+                <span>Imprimir PVP</span>
+            </label>
+            <button type="submit" class="r5-btn r5-btn--secundario" disabled="@(_ocupado || string.IsNullOrWhiteSpace(_albNumero))">Imprimir albarán</button>
+        </form>
+
+        <form class="r5-tarjeta r5-columna" style="flex:1; min-width: 280px;" @onsubmit="ImprimirBultosAsync">
+            <h3>Bultos de traspaso</h3>
+            <p class="r5-texto-suave r5-texto-sm">Origen: este almacén (@Sesion.Usuario?.Almacen.CodAlm). EAN de bulto 1-origen-destino-bulto.</p>
+            <div class="r5-fila">
+                <div class="r5-campo" style="flex:1">
+                    <label for="bulDest">Almacén destino</label>
+                    <input id="bulDest" class="r5-input r5-input--numero" type="number" min="1" max="999" @bind="_bulDestino" />
+                </div>
+                <div class="r5-campo" style="flex:1">
+                    <label for="bulIni">Bulto desde</label>
+                    <input id="bulIni" class="r5-input r5-input--numero" type="number" min="1" max="99999" @bind="_bulIni" />
+                </div>
+                <div class="r5-campo" style="flex:1">
+                    <label for="bulFin">hasta</label>
+                    <input id="bulFin" class="r5-input r5-input--numero" type="number" min="1" max="99999" @bind="_bulFin" />
+                </div>
+            </div>
+            <button type="submit" class="r5-btn r5-btn--secundario" disabled="@(_ocupado || _bulDestino is null or <= 0)">Imprimir bultos</button>
+        </form>
+    </div>
+</div>
+</GuardiaModulo>
+
+@code {
+    private bool _etiqPda;             // false = cambios de PVP del día; true = pedidas desde terminal
+    private bool _soloEsteEquipo;
+    private bool _frutaConPrecio = true;
+    private string _equipo = Environment.MachineName;
+    private List<EanListPendiente> _cola = new();
+    private bool _ocupado;
+    private bool _imprimiendo;
+    private string _aviso = "";
+    private string _tipoAviso = "error";
+
+    // Operativas puntuales.
+    private string _manEan = "";
+    private string _manTexto = "";
+    private decimal? _manPvp;
+    private short _manCopias = 1;
+    private string _serInicioTexto = "";
+    private short _serCantidad = 1;
+    private string _serTexto = "";
+    private string _albNumero = "";
+    private DateTime _albFecha = DateTime.Today;
+    private bool _albConPvp = true;
+    private short? _bulDestino;
+    private short _bulIni = 1;
+    private short _bulFin = 1;
+
+    protected override Task OnInitializedAsync() => CargarColaAsync();
+
+    private Task CambiarOrigenAsync(bool etiqPda)
+    {
+        if (_etiqPda == etiqPda) return Task.CompletedTask;
+        _etiqPda = etiqPda;
+        return CargarColaAsync();
+    }
+
+    private async Task CargarColaAsync()
+    {
+        if (!Sesion.Autenticado) return;
+        _ocupado = true;
+        _aviso = "";
+        try
+        {
+            var r = await EanList.GetPendientesAsync(Sesion.Usuario!.Almacen.CodAlm, _etiqPda,
+                _soloEsteEquipo ? _equipo : "");
+            if (!r.Ok) { MostrarError(r.Error); _cola = new(); return; }
+            _cola = r.Datos ?? new();
+        }
+        finally
+        {
+            _ocupado = false;
+        }
+    }
+
+    // Carga la cola del día (modo 1 = cambios de PVP, 2 = reimpresión) y refresca.
+    private async Task CargarDiaAsync(byte modo)
+    {
+        if (_ocupado || !Sesion.Autenticado) return;
+        _ocupado = true;
+        _aviso = "";
+        try
+        {
+            var r = await EanList.CargarAsync(Sesion.Usuario!.Almacen.CodAlm, modo);
+            if (!r.Ok) { MostrarError(r.Error); return; }
+            _tipoAviso = "exito";
+            _aviso = modo == 1 ? "Cambios del día cargados en la cola." : "Cola recargada para reimpresión.";
+        }
+        finally
+        {
+            _ocupado = false;
+        }
+        await CargarColaAsync();
+    }
+
+    // Imprime la cola agrupando por formato: un PDF por TipoPrint con filas, en el mismo
+    // orden que R3/Delphi (0,1,2,3,4,5). El folio/textil solo en cambios generales.
+    private async Task ImprimirColaAsync()
+    {
+        if (_ocupado || _cola.Count == 0) return;
+        _ocupado = true;
+        _imprimiendo = true;
+        _aviso = "";
+        try
+        {
+            short alm = Sesion.Usuario!.Almacen.CodAlm;
+            string equipo = _soloEsteEquipo ? _equipo : "";
+            int impresas = 0;
+            foreach (byte tp in new byte[] { 0, 1, 2, 3, 4, 5 })
+            {
+                if (tp == 5 && _etiqPda) continue; // folio/textil solo en cambios generales (como R3)
+                if (!_cola.Any(l => l.TipoPrint == tp)) continue;
+
+                var pdf = await EanList.GetColaPdfAsync(alm, tp, _etiqPda, equipo, _frutaConPrecio);
+                if (!pdf.Ok || pdf.Datos is null) { MostrarError($"Formato {tp}: {pdf.Error}"); continue; }
+                await Visor.AbrirAsync($"EanList_tp{tp}.pdf", pdf.Datos);
+                impresas++;
+            }
+            if (impresas > 0)
+            {
+                _tipoAviso = "exito";
+                _aviso = $"{impresas} PDF(s) generados. Cuando estén impresos, usa «Marcar impresas» para vaciar la cola.";
+            }
+        }
+        finally
+        {
+            _ocupado = false;
+            _imprimiendo = false;
+        }
+    }
+
+    private async Task MarcarAsync()
+    {
+        if (!Sesion.Autenticado) return;
+        _ocupado = true;
+        _aviso = "";
+        try
+        {
+            var r = await EanList.MarcarAsync(Sesion.Usuario!.Almacen.CodAlm, _etiqPda,
+                _soloEsteEquipo ? _equipo : "");
+            if (!r.Ok) { MostrarError(r.Error); return; }
+            _tipoAviso = "exito";
+            _aviso = "Etiquetas marcadas como impresas.";
+        }
+        finally
+        {
+            _ocupado = false;
+        }
+        await CargarColaAsync();
+    }
+
+    private async Task ImprimirManualAsync()
+    {
+        string ean = _manEan.Trim();
+        if (_ocupado || ean.Length == 0) return;
+        if (!ean.All(char.IsDigit)) { MostrarError("El EAN debe ser numérico."); return; }
+        await AbrirPdfAsync(EanList.GetMetoManualPdfAsync(ean, _manTexto.Trim(), _manPvp ?? 0, _manCopias),
+            $"EtiqManual_{ean}.pdf");
+    }
+
+    private async Task ImprimirSerieAsync()
+    {
+        if (_ocupado || !long.TryParse(_serInicioTexto.Trim(), out long inicio) || inicio <= 0)
+        { MostrarError("Número inicial no válido."); return; }
+        await AbrirPdfAsync(EanList.GetSeriePdfAsync(inicio, _serCantidad, _serTexto.Trim()),
+            $"EtiqSerie_{inicio}.pdf");
+    }
+
+    private async Task ImprimirAlbaranAsync()
+    {
+        string albaran = _albNumero.Trim();
+        if (_ocupado || albaran.Length == 0 || !Sesion.Autenticado) return;
+        await AbrirPdfAsync(EanList.GetMetoAlbPdfAsync(Sesion.Usuario!.Almacen.CodAlm, _albFecha, albaran, _albConPvp),
+            $"EtiqAlbaran_{albaran}.pdf");
+    }
+
+    private async Task ImprimirBultosAsync()
+    {
+        if (_ocupado || _bulDestino is null or <= 0 || !Sesion.Autenticado) return;
+        if (_bulFin < _bulIni || _bulFin - _bulIni >= 200) { MostrarError("Rango de bultos no válido (máx. 200)."); return; }
+        await AbrirPdfAsync(EanList.GetBultosPdfAsync(Sesion.Usuario!.Almacen.CodAlm, _bulDestino.Value, _bulIni, _bulFin),
+            $"EtiqBultos_{_bulDestino}.pdf");
+    }
+
+    private async Task AbrirPdfAsync(Task<ApiRespuesta<byte[]>> peticion, string nombre)
+    {
+        _ocupado = true;
+        _aviso = "";
+        try
+        {
+            var r = await peticion;
+            if (!r.Ok || r.Datos is null) { MostrarError(r.Error); return; }
+            await Visor.AbrirAsync(nombre, r.Datos);
+        }
+        finally
+        {
+            _ocupado = false;
+        }
+    }
+
+    private void MostrarError(string mensaje)
+    {
+        _tipoAviso = "error";
+        _aviso = mensaje;
+    }
+}

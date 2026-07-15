@@ -5,6 +5,7 @@
    La cola del terminal se ve y se puede vaciar. *@
 @page "/etiquetas"
 @inject EtiquetaService ServicioEtiquetas
+@inject EanListService EanList
 @inject SesionUsuario Sesion
 @inject NavigationManager Nav
 @inject IJSRuntime JS
@@ -22,6 +23,10 @@
                 <input type="checkbox" style="width: 24px; height: 24px;" @bind="_automatico" />
                 <span>Automático (solicitar al escanear)</span>
             </label>
+            @* Cola EanList (cambios de PVP del día + operativas manual/serie/albarán/bultos). *@
+            <button class="r5-btn r5-btn--secundario" @onclick='() => Nav.NavigateTo("/etiquetas/cola")'>
+                Cola de etiquetas @(_pendientesEanList > 0 ? $"({_pendientesEanList})" : "")
+            </button>
         </div>
 
         <form @onsubmit="EscanearAsync" class="r5-buscador">
@@ -116,7 +121,24 @@
     private long _eanActual;
     private List<Producto> _cola = new();
 
-    protected override Task OnInitializedAsync() => CargarColaAsync();
+    // Aviso de etiquetas EanList pendientes al entrar (paridad con el MsgBox de R3):
+    // se muestra el contador en el botón de la cola. Mejor esfuerzo, no bloquea.
+    private int _pendientesEanList;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarColaAsync();
+        if (Sesion.Autenticado)
+        {
+            var p = await EanList.GetPendientesAsync(Sesion.Usuario!.Almacen.CodAlm, etiqPda: false);
+            if (p.Ok && p.Datos is not null && p.Datos.Count > 0)
+            {
+                _pendientesEanList = p.Datos.Count;
+                _tipoAviso = "info";
+                _aviso = $"Tienes {_pendientesEanList} etiquetas de cambios de PVP pendientes de imprimir en la cola.";
+            }
+        }
+    }
 
     // Foco directo al escáner al entrar (el autofocus de Blazor no dispara al navegar).
     protected override async Task OnAfterRenderAsync(bool firstRender)
