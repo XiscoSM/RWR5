@@ -34,9 +34,19 @@ public sealed class PedidoCompraService
         => _api.GetAsync<PedidoCompraLin>(
             $"PedidoCompra/{numPedido}/Producto/{codProd}?fecha={fecha:yyyy-MM-dd}&codProv={codProv}&codGama={codGama}&codEan={codEan}&codAlm={codAlm}", ct);
 
+    /// <summary>GET PedidoCompra/{num}/Producto/CodProdProv?codProdProv= — producto por la
+    /// REFERENCIA del proveedor (el código con el que el proveedor lo nombra, no el nuestro).</summary>
+    public Task<ApiRespuesta<PedidoCompraLin>> GetProductoPorRefProvAsync(int numPedido, DateTime fecha, int codProv, int codGama, string codProdProv, short codAlm, CancellationToken ct = default)
+        => _api.GetAsync<PedidoCompraLin>(
+            $"PedidoCompra/{numPedido}/Producto/CodProdProv?fecha={fecha:yyyy-MM-dd}&codProv={codProv}&codGama={codGama}&codProdProv={Uri.EscapeDataString(codProdProv)}&codAlm={codAlm}", ct);
+
     /// <summary>POST PedidoCompra/{num}/Linea — añade la línea al pedido.</summary>
     public Task<ApiRespuesta<PedidoCompraLin>> PostLineaAsync(PedidoCompraLinInsertDTO linea, CancellationToken ct = default)
         => _api.PostAsync<PedidoCompraLin>($"PedidoCompra/{linea.NumPedido}/Linea", linea, ct);
+
+    /// <summary>DELETE PedidoCompra/{num}/Linea/{linea} — elimina una línea del pedido abierto.</summary>
+    public Task<ApiRespuesta> DeleteLineaAsync(int numPedido, int linea, CancellationToken ct = default)
+        => _api.DeleteAsync($"PedidoCompra/{numPedido}/Linea/{linea}", ct);
 
     /// <summary>POST PedidoCompra/{num}/Registrar/{codUsuario}/{fechaPrevEnvio} — registra el pedido.</summary>
     public Task<ApiRespuesta> RegistrarAsync(int numPedido, short codUsuario, DateTime fechaPrevEnvio, CancellationToken ct = default)

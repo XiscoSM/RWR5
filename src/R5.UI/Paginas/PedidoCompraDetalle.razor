@@ -21,6 +21,11 @@
             <div class="r5-fila" style="margin-left:auto; flex-wrap: wrap;">
                 @if (Reg == 0 && !_registrado)
                 {
+                    @* Retomar: vuelve al alta con este pedido cargado para añadir/cambiar líneas. *@
+                    <button class="r5-btn r5-btn--secundario" disabled="@_registrando"
+                            @onclick='() => Nav.NavigateTo($"/pedidoCompra/alta/{NumPedido}")'>
+                        + Añadir líneas
+                    </button>
                     @* Pendiente: la acción del detalle es completar el registro (envío previsto mañana). *@
                     <div class="r5-campo">
                         <label for="fechaPrevEnvio">Envío previsto</label>

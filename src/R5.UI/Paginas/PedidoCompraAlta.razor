@@ -3,6 +3,7 @@
    La cabecera se crea al añadir la primera línea; al final Registrar y, si el
    proveedor tiene mail, encolar el envío. *@
 @page "/pedidoCompra/alta"
+@page "/pedidoCompra/alta/{NumRuta:int}"
 @inject PedidoCompraService Pedidos
 @inject ProveedorService Proveedores
 @inject SesionUsuario Sesion
@@ -14,7 +15,7 @@
 
     <div class="r5-fila">
         <button class="r5-btn r5-btn--secundario" @onclick="Volver">← Pedidos</button>
-        <h2>Nuevo pedido a proveedor</h2>
+        <h2>@(NumRuta > 0 ? "Continuar pedido" : "Nuevo pedido a proveedor")</h2>
         @if (_numPedido > 0)
         {
             <div class="r5-fila" style="margin-left:auto">
@@ -79,13 +80,19 @@
             </div>
 
             <form @onsubmit="BuscarProductoAsync" class="r5-buscador">
-                <input id="busquedaPedProv" class="r5-input" type="text" inputmode="numeric"
-                       placeholder="Escanea un EAN o teclea el código de producto"
+                <input id="busquedaPedProv" class="r5-input" type="text" inputmode="@(_porRefProv ? "text" : "numeric")"
+                       placeholder="@(_porRefProv ? "Teclea la referencia del proveedor" : "Escanea un EAN o teclea el código de producto")"
                        @bind="_codigo" @bind:event="oninput" disabled="@_ocupado" />
                 <button type="submit" class="r5-btn r5-btn--secundario" disabled="@(_ocupado || string.IsNullOrWhiteSpace(_codigo))">
                     Buscar
                 </button>
             </form>
+            @* Alternativa de búsqueda: por la referencia con la que el PROVEEDOR nombra el
+               producto (viene en su catálogo/albarán), no por nuestro código. *@
+            <label class="r5-fila" style="gap: var(--esp-2); cursor: pointer;">
+                <input type="checkbox" @bind="_porRefProv" />
+                <span class="r5-texto-suave">Buscar por referencia del proveedor</span>
+            </label>
         </div>
 
         <Aviso Tipo="@_tipoAviso" Mensaje="@_aviso" />
@@ -109,6 +116,13 @@
                     <div><dt>Stock actual</dt><dd>@Cantidad(_linea.Stock, _linea.Prod.DecimalesEnCant)</dd></div>
                 </dl>
 
+                @* Producto ya en el pedido: la cantidad viene precargada y el proc SUSTITUYE
+                   la línea (upsert), como el 'puede modificarlo' de R3. *@
+                @if (_yaPedido)
+                {
+                    <Aviso Tipo="aviso" Mensaje="@($"Producto ya pedido ({Cantidad(_cantYaPedida, _linea.Prod.DecimalesEnCant)}): la cantidad que confirmes SUSTITUIRÁ a la actual.")" />
+                }
+
                 <div class="r5-fila">
                     <div class="r5-campo" style="flex:1">
                         <label for="cajasPed">Cajas</label>
@@ -123,16 +137,25 @@
                     </div>
                 </div>
 
-                <button class="r5-btn r5-btn--primario r5-btn--bloque" @onclick="AnadirAsync"
-                        disabled="@(_anadiendo || _cantidad <= 0)">
-                    @(_anadiendo ? "Añadiendo…" : $"Añadir {Cantidad(_cantidad, _linea.Prod.DecimalesEnCant)} al pedido")
-                </button>
+                <div class="r5-fila">
+                    <button class="r5-btn r5-btn--primario" style="flex:1" @onclick="AnadirAsync"
+                            disabled="@(_anadiendo || _cantidad <= 0)">
+                        @(_anadiendo ? "Añadiendo…" : $"{(_yaPedido ? "Cambiar a" : "Añadir")} {Cantidad(_cantidad, _linea.Prod.DecimalesEnCant)}")
+                    </button>
+                    @if (_yaPedido && _linea.Linea > 0)
+                    {
+                        <button class="r5-btn r5-btn--peligro" disabled="@_anadiendo"
+                                @onclick='() => EliminarLineaAsync(_linea.Linea, _linea.Prod.DescProd ?? "")'>
+                            Eliminar del pedido
+                        </button>
+                    }
+                </div>
             </div>
         }
 
         <PanelLineas Items="_lineasDoc" Cargando="_cargandoLineas" Titulo="Líneas del pedido">
             <Cabecera>
-                <th>Cód.</th><th>Producto</th><th class="num">Cajas</th><th class="num">Cant.</th>
+                <th>Cód.</th><th>Producto</th><th class="num">Cajas</th><th class="num">Cant.</th><th></th>
             </Cabecera>
             <Fila Context="l">
                 <tr @key="l.Prod.CodProd">
@@ -140,6 +163,17 @@
                     <td>@l.Prod.DescProd</td>
                     <td class="num">@l.Cajas</td>
                     <td class="num">@Cantidad(l.Cant, l.Prod.DecimalesEnCant)</td>
+                    <td class="num">
+                        @if (_lineaBorrando == l.Linea)
+                        {
+                            <button class="r5-btn r5-btn--peligro r5-btn--sm" @onclick='() => EliminarLineaAsync(l.Linea, l.Prod.DescProd ?? "")'>¿Seguro?</button>
+                            <button class="r5-btn r5-btn--fantasma r5-btn--sm" @onclick="() => _lineaBorrando = 0">No</button>
+                        }
+                        else
+                        {
+                            <button class="r5-btn r5-btn--fantasma r5-btn--sm" @onclick="() => _lineaBorrando = l.Linea">Quitar</button>
+                        }
+                    </td>
                 </tr>
             </Fila>
         </PanelLineas>
@@ -148,6 +182,10 @@
 </GuardiaModulo>
 
 @code {
+    // Reanudación: si la ruta trae número, se carga ese pedido pendiente y se sigue
+    // añadiendo/cambiando líneas (paridad con "Continuar" de R3).
+    [Parameter] public int NumRuta { get; set; }
+
     private string _codigoProv = "";
     private List<Proveedor> _gamas = new();
     private Proveedor? _gamaElegida;
@@ -157,14 +195,49 @@
     private bool _anadiendo;
     private bool _registrando;
     private bool _enfocarBuscador;
+    private bool _porRefProv;          // buscar por referencia del proveedor en vez de EAN/código
+    private int _lineaBorrando;        // línea con confirmación de borrado abierta (0 = ninguna)
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (NumRuta <= 0) return;
+
+        _ocupado = true;
+        try
+        {
+            var cab = await Pedidos.GetCabeceraAsync(NumRuta);
+            if (!cab.Ok || cab.Datos is null || cab.Datos.NumPedido <= 0)
+            {
+                MostrarError($"No se pudo cargar el pedido {NumRuta}: {cab.Error}");
+                return;
+            }
+            if (cab.Datos.Reg)
+            {
+                MostrarError($"El pedido {NumRuta} ya está registrado: no admite cambios.");
+                return;
+            }
+
+            _numPedido = cab.Datos.NumPedido;
+            _fecha = cab.Datos.Fecha;
+            _gamaElegida = cab.Datos.Prov;
+            if (cab.Datos.FechaPrevEnvio > DateTime.Today) _fechaPrevEnvio = cab.Datos.FechaPrevEnvio;
+            await RefrescarLineasAsync();
+            _lineasAnadidas = _lineasDoc.Count;
+        }
+        finally
+        {
+            _ocupado = false;
+        }
+    }
 
     // Foco directo al buscador de proveedor al entrar (el autofocus de Blazor no dispara
     // al navegar) y, después, al buscador de producto en cuanto aparece (tras elegir gama).
+    // Al reanudar, el proveedor ya está fijado: el foco va directo al buscador de producto.
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
         {
-            await JS.InvokeVoidAsync("r5.seleccionar", "busquedaProvPed");
+            await JS.InvokeVoidAsync("r5.seleccionar", _numPedido > 0 ? "busquedaPedProv" : "busquedaProvPed");
             return;
         }
         if (_enfocarBuscador)
@@ -184,8 +257,12 @@
     private int _lineasAnadidas;
     private List<PedidoCompraLin> _lineasDoc = new();
     private bool _cargandoLineas;
-    private readonly DateTime _fecha = DateTime.Today;
+    private DateTime _fecha = DateTime.Today;   // al reanudar se toma la del pedido
     private DateTime _fechaPrevEnvio = DateTime.Today.AddDays(1);
+
+    // Producto ya en el pedido: el Get devuelve su línea con la cantidad actual.
+    private bool _yaPedido => _linea is not null && _linea.Linea > 0 && _cantYaPedida > 0;
+    private decimal _cantYaPedida;
 
     private short UnidsCaja => _linea is null ? (short)1
         : (_linea.Ean.UnidCaja > 1 ? _linea.Ean.UnidCaja : (_linea.Prod.UnidsCaja > 0 ? _linea.Prod.UnidsCaja : (short)1));
@@ -260,25 +337,46 @@
         _aviso = "";
         _linea = null;
         _eanEscaneado = 0;
+        _cantYaPedida = 0;
         try
         {
             short codAlm = Sesion.Usuario!.Almacen.CodAlm;
 
-            int codProd = 0;
-            long codEan = 0;
-            if (codigo.Length >= 8 && long.TryParse(codigo, out long ean)) codEan = ean;
-            else if (int.TryParse(codigo, out int cod) && cod > 0) codProd = cod;
-            else { MostrarError("Introduce un código numérico (producto o EAN)."); return; }
+            ApiRespuesta<PedidoCompraLin> respuesta;
+            if (_porRefProv)
+            {
+                // Por referencia del proveedor (puede ser alfanumérica).
+                respuesta = await Pedidos.GetProductoPorRefProvAsync(_numPedido, _fecha,
+                    _gamaElegida.CodProv, _gamaElegida.Gama.CodGama, codigo, codAlm);
+            }
+            else
+            {
+                int codProd = 0;
+                long codEan = 0;
+                if (codigo.Length >= 8 && long.TryParse(codigo, out long ean)) codEan = ean;
+                else if (int.TryParse(codigo, out int cod) && cod > 0) codProd = cod;
+                else { MostrarError("Introduce un código numérico (producto o EAN)."); return; }
 
-            var respuesta = await Pedidos.GetProductoAsync(_numPedido, _fecha,
-                _gamaElegida.CodProv, _gamaElegida.Gama.CodGama, codProd, codEan, codAlm);
+                respuesta = await Pedidos.GetProductoAsync(_numPedido, _fecha,
+                    _gamaElegida.CodProv, _gamaElegida.Gama.CodGama, codProd, codEan, codAlm);
+                _eanEscaneado = codEan;
+            }
             if (!respuesta.Ok || respuesta.Datos is null) { MostrarError(respuesta.Error); return; }
             if (respuesta.Datos.Prod.CodProd <= 0) { MostrarError($"El código {codigo} no corresponde a ningún producto de esta gama."); return; }
 
             _linea = respuesta.Datos;
-            _eanEscaneado = codEan;
-            _cajas = 1;
-            _cantidad = UnidsCaja;
+            // Ya pedido: precarga la cantidad actual para modificarla (el proc sustituye).
+            _cantYaPedida = _linea.Linea > 0 ? _linea.Cant : 0;
+            if (_cantYaPedida > 0)
+            {
+                _cantidad = _cantYaPedida;
+                _cajas = _linea.Cajas;
+            }
+            else
+            {
+                _cajas = 1;
+                _cantidad = UnidsCaja;
+            }
         }
         finally
         {
@@ -354,20 +452,60 @@
     }
 
     // Refresca el panel de líneas sin bloquear el siguiente escaneo (ApiWeb no lanza).
+    // El contador del chip sale de la lista real (los borrados también cuentan).
     private async Task RefrescarLineasAsync()
     {
         if (_numPedido <= 0) return;
         _cargandoLineas = true;
         var r = await Pedidos.GetLineasAsync(_numPedido);
-        if (r.Ok && r.Datos is not null) _lineasDoc = r.Datos;
+        if (r.Ok && r.Datos is not null)
+        {
+            _lineasDoc = r.Datos;
+            _lineasAnadidas = _lineasDoc.Count;
+        }
         _cargandoLineas = false;
         StateHasChanged();
+    }
+
+    // Elimina una línea del pedido abierto (desde la ficha o desde el panel de líneas).
+    private async Task EliminarLineaAsync(int linea, string descProd)
+    {
+        if (_anadiendo || _numPedido <= 0 || linea <= 0) return;
+
+        _anadiendo = true;
+        _lineaBorrando = 0;
+        _aviso = "";
+        try
+        {
+            var r = await Pedidos.DeleteLineaAsync(_numPedido, linea);
+            if (!r.Ok) { MostrarError(r.Error); return; }
+
+            _tipoAviso = "exito";
+            _aviso = $"{descProd}: línea eliminada del pedido {_numPedido}.";
+            _linea = null;
+            _cantYaPedida = 0;
+            _ = RefrescarLineasAsync();
+        }
+        finally
+        {
+            _anadiendo = false;
+            StateHasChanged();
+            await JS.InvokeVoidAsync("r5.seleccionar", "busquedaPedProv");
+        }
     }
 
     // Registrar el pedido: irreversible desde la app (queda listo para enviar al proveedor).
     private async Task RegistrarAsync()
     {
         if (_registrando || _numPedido <= 0) return;
+
+        // Validación de R3: la fecha prevista de envío debe ser posterior a hoy y a la
+        // fecha del pedido (no tiene sentido comprometer un envío en el pasado).
+        if (_fechaPrevEnvio.Date <= DateTime.Today || _fechaPrevEnvio.Date <= _fecha.Date)
+        {
+            MostrarError($"La fecha prevista de envío ({_fechaPrevEnvio:dd/MM/yy}) debe ser posterior a hoy y a la fecha del pedido.");
+            return;
+        }
 
         _registrando = true;
         _aviso = "";
