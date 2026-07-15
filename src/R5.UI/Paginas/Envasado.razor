@@ -3,6 +3,7 @@
    con la báscula si está configurada, o tecleando — y cada pesada genera la
    etiqueta (PDF con EAN128 de peso/pvp y código de barras, del mismo rdlc de R3). *@
 @page "/envasado"
+@implements IDisposable
 @inject EnvasadoService ServicioEnvasado
 @inject AlmacenService Almacenes
 @inject R5.Core.Hardware.IBalanza Balanza
@@ -107,12 +108,27 @@
                 @if (Balanza.Disponible)
                 {
                     <button class="r5-btn r5-btn--secundario" style="align-self: flex-end; min-height: var(--alto-input);"
-                            @onclick="PesarAsync" disabled="@_pesando">
+                            @onclick="PesarAsync" disabled="@(_pesando || _encadenado)">
                         <Icono Nombre="balanza" Clase="r5-barra__icono" />
                         @(_pesando ? "Pesando…" : "Leer báscula")
                     </button>
                 }
             </div>
+
+            @if (Balanza.Disponible)
+            {
+                @* Modo encadenado de mostrador (paridad R3): cada peso estable etiqueta
+                   automáticamente; hay que retirar la pieza para armar la siguiente pesada. *@
+                <label class="r5-fila" style="gap: var(--esp-2); cursor: pointer;">
+                    <input type="checkbox" checked="@_encadenado" @onchange="ToggleEncadenadoAsync" />
+                    <span>Pesadas encadenadas (etiqueta sola al estabilizar; retira la pieza entre pesadas)</span>
+                </label>
+                @if (_encadenado)
+                {
+                    <Aviso Tipo="info" ConSonido="false"
+                           Mensaje="@(_esperandoRetirada ? "Etiqueta generada: retira la pieza de la báscula." : "Báscula armada: coloca la pieza.")" />
+                }
+            }
 
             <dl class="r5-datos">
                 <div><dt>Importe</dt><dd>@Moneda(Math.Round(_peso * _seleccionado.Pvp, 2))</dd></div>
@@ -152,6 +168,85 @@
         _codAlmDest = Sesion.Usuario?.Almacen.CodAlm ?? 0;
         _descAlmDest = Sesion.Usuario?.Almacen.DescAlm ?? "";
     }
+
+    // ---- Modo encadenado (paridad con el bucle de báscula de R3: pesar→imprimir→pesar) ----
+    private bool _encadenado;
+    private bool _esperandoRetirada;
+    private CancellationTokenSource? _ctsEncadenado;
+
+    private async Task ToggleEncadenadoAsync(ChangeEventArgs e)
+    {
+        bool activar = e.Value is bool b && b;
+        if (activar == _encadenado) return;
+
+        if (!activar)
+        {
+            PararEncadenado();
+            return;
+        }
+
+        if (!Balanza.Conectada && !await Balanza.ConectarAsync())
+        {
+            MostrarError("No se pudo conectar con la báscula (revisa el puerto en Ajustes).");
+            return;
+        }
+        _encadenado = true;
+        _esperandoRetirada = false;
+        _ctsEncadenado = new CancellationTokenSource();
+        _ = BucleEncadenadoAsync(_ctsEncadenado.Token);
+    }
+
+    private void PararEncadenado()
+    {
+        _encadenado = false;
+        _ctsEncadenado?.Cancel();
+        _ctsEncadenado = null;
+    }
+
+    // Bucle de mostrador: lectura estable > 20 g etiqueta automáticamente; después hay
+    // que retirar la pieza (peso < 20 g) para armar la siguiente pesada. Así una misma
+    // pieza no genera dos etiquetas aunque la báscula repita la lectura.
+    private async Task BucleEncadenadoAsync(CancellationToken ct)
+    {
+        try
+        {
+            while (!ct.IsCancellationRequested && _encadenado)
+            {
+                if (_seleccionado is null || _ocupado) { await Task.Delay(300, ct); continue; }
+
+                var lectura = await Balanza.LeerPesoAsync(ct);
+                if (ct.IsCancellationRequested) break;
+                if (lectura is null) continue;
+
+                decimal kg = lectura.Value.Kilos;
+                if (_esperandoRetirada)
+                {
+                    if (kg < 0.02m)
+                    {
+                        _esperandoRetirada = false;
+                        await InvokeAsync(StateHasChanged);
+                    }
+                    continue;
+                }
+                if (!lectura.Value.Estable || kg < 0.02m) continue;
+
+                _peso = kg;
+                await InvokeAsync(StateHasChanged);
+                await InvokeAsync(EtiquetarAsync);
+                _esperandoRetirada = true;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException) { /* toggle apagado o salida de la página */ }
+        catch (Exception ex)
+        {
+            _encadenado = false;
+            MostrarError("Modo encadenado detenido: " + ex.Message);
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    public void Dispose() => PararEncadenado();
 
     private async Task ValidarDestinoAsync()
     {
