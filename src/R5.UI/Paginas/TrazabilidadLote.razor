@@ -1,0 +1,245 @@
+@* Visor de trazabilidad de lote (el VERDADERO módulo 7 de R3, 7_FichaProd.vb):
+   movimientos de un lote buscado por nº de lote o por EAN128 (producto+lote),
+   con niveles de detalle, navegación a lotes hijo (pila con "Anterior") y
+   etiqueta de trazabilidad. Se llega desde Ficha producto. *@
+@page "/trazabilidad"
+@inject TrazabilidadService Trazabilidad
+@inject IVisorArchivos Visor
+@inject SesionUsuario Sesion
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<GuardiaModulo CodMenu="7">
+<div class="r5-columna">
+
+    <div class="r5-fila" style="flex-wrap: wrap;">
+        <button class="r5-btn r5-btn--secundario" @onclick='() => Nav.NavigateTo("/fichaProducto")'>← Ficha producto</button>
+        <h2>Trazabilidad de lote</h2>
+        @if (_pila.Count > 0)
+        {
+            <button class="r5-btn r5-btn--secundario" @onclick="VolverLoteAsync">← Lote anterior (@_pila.Peek().Lote)</button>
+        }
+        @if (_lote > 0)
+        {
+            <div class="r5-fila" style="margin-left:auto">
+                <span class="r5-chip r5-chip--suave">@(_prod > 0 ? $"Prod {_prod} · " : "")Lote @_lote</span>
+                <button class="r5-btn r5-btn--secundario" @onclick="AbrirEtiquetaAsync"
+                        disabled="@(_generandoPdf || _prod <= 0)">
+                    @(_generandoPdf ? "Generando…" : "Etiqueta")
+                </button>
+            </div>
+        }
+    </div>
+
+    <div class="r5-tarjeta r5-columna">
+        <form @onsubmit="BuscarAsync" class="r5-buscador">
+            <input id="busquedaLote" class="r5-input" type="text" inputmode="numeric"
+                   placeholder="Escanea el EAN128 de trazabilidad o teclea el nº de lote"
+                   @bind="_codigo" @bind:event="oninput" autofocus disabled="@_ocupado" />
+            <button type="submit" class="r5-btn r5-btn--secundario" disabled="@(_ocupado || string.IsNullOrWhiteSpace(_codigo))">
+                Buscar
+            </button>
+        </form>
+        <div class="r5-segmento" style="align-self: flex-start;">
+            <button class="@(_detalle == 0 ? "activo" : "")" @onclick="() => CambiarDetalleAsync(0)" disabled="@_ocupado">Resumen</button>
+            <button class="@(_detalle == 1 ? "activo" : "")" @onclick="() => CambiarDetalleAsync(1)" disabled="@_ocupado">Detalle</button>
+            <button class="@(_detalle == 2 ? "activo" : "")" @onclick="() => CambiarDetalleAsync(2)" disabled="@_ocupado">Completo</button>
+        </div>
+    </div>
+
+    <Aviso Tipo="@_tipoAviso" Mensaje="@_aviso" />
+
+    @if (_ocupado)
+    {
+        <Cargando Texto="Buscando movimientos…" />
+    }
+    else if (_lote > 0 && _movs.Count == 0 && _aviso.Length == 0)
+    {
+        <div class="r5-cargando">
+            <Icono Nombre="producto" Clase="r5-modulo__icono" />
+            <span>El lote @_lote no tiene movimientos con este nivel de detalle.</span>
+        </div>
+    }
+    else if (_movs.Count > 0)
+    {
+        <p class="r5-texto-suave r5-texto-sm">Toca una fila con columna «Lote» para bajar al lote hijo.</p>
+        <div class="r5-tarjeta r5-tabla-scroll">
+            <table class="r5-tabla">
+                <thead>
+                    <tr>
+                        @foreach (var col in _columnas)
+                        {
+                            <th>@col</th>
+                        }
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var (fila, i) in _movs.Select((f, i) => (f, i)))
+                    {
+                        <tr @key="i" style="@(TieneLoteHijo(fila) ? "cursor:pointer;" : "")"
+                            @onclick="() => AbrirLoteHijoAsync(fila)">
+                            @foreach (var col in _columnas)
+                            {
+                                <td>@(fila.TryGetValue(col, out var v) ? v : "")</td>
+                            }
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+</GuardiaModulo>
+
+@code {
+    // El buscador acepta EAN128 (16 dígitos: producto+lote) o nº de lote a secas.
+    [SupplyParameterFromQuery(Name = "prod")] public int? ProdQuery { get; set; }
+    [SupplyParameterFromQuery(Name = "lote")] public int? LoteQuery { get; set; }
+
+    private string _codigo = "";
+    private int _prod;
+    private int _lote;
+    private byte _detalle;
+    private bool _ocupado;
+    private bool _generandoPdf;
+    private string _aviso = "";
+    private string _tipoAviso = "error";
+
+    private List<Dictionary<string, string?>> _movs = new();
+    private List<string> _columnas = new();
+
+    // Pila de navegación padre→hijo (el "Anterior" de R3).
+    private readonly Stack<(int Prod, int Lote)> _pila = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Deep-link desde Ficha producto (prod+lote conocidos).
+        if (LoteQuery is > 0)
+        {
+            _prod = ProdQuery ?? 0;
+            _lote = LoteQuery.Value;
+            await CargarMovsAsync();
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender) await JS.InvokeVoidAsync("r5.seleccionar", "busquedaLote");
+    }
+
+    private async Task BuscarAsync()
+    {
+        string codigo = _codigo.Trim();
+        if (_ocupado || codigo.Length == 0) return;
+
+        // EAN128 de trazabilidad (16 dígitos) trae producto y lote; un número corto es el lote.
+        if (EnvasadoService.TryParseEan128(codigo, out int prod, out int lote))
+        {
+            _prod = prod;
+            _lote = lote;
+        }
+        else if (codigo.Length < 11 && int.TryParse(codigo, out int soloLote) && soloLote > 0)
+        {
+            _prod = 0;
+            _lote = soloLote;
+        }
+        else
+        {
+            MostrarError("Introduce un EAN128 de trazabilidad (16 dígitos) o un nº de lote.");
+            return;
+        }
+
+        _pila.Clear();
+        await CargarMovsAsync();
+    }
+
+    private async Task CambiarDetalleAsync(byte detalle)
+    {
+        if (_detalle == detalle) return;
+        _detalle = detalle;
+        if (_lote > 0) await CargarMovsAsync();
+    }
+
+    private async Task CargarMovsAsync()
+    {
+        if (!Sesion.Autenticado || _lote <= 0) return;
+        _ocupado = true;
+        _aviso = "";
+        _movs = new();
+        _columnas = new();
+        try
+        {
+            var r = await Trazabilidad.GetMovsAsync(_prod, _lote, Sesion.Usuario!.Almacen.CodAlm, _detalle);
+            if (!r.Ok) { MostrarError(r.Error); return; }
+            _movs = r.Datos ?? new();
+            if (_movs.Count > 0) _columnas = _movs[0].Keys.ToList();
+        }
+        finally
+        {
+            _ocupado = false;
+            StateHasChanged();
+            await JS.InvokeVoidAsync("r5.seleccionar", "busquedaLote");
+        }
+    }
+
+    // Drill-down: si la fila trae un lote distinto del actual, se puede bajar a él.
+    private bool TieneLoteHijo(Dictionary<string, string?> fila)
+        => LoteDeFila(fila) is int l && l > 0 && l != _lote;
+
+    private int? LoteDeFila(Dictionary<string, string?> fila)
+    {
+        foreach (var clave in new[] { "Lote", "LOTE", "LoteHijo" })
+        {
+            if (fila.TryGetValue(clave, out var v) && int.TryParse(v, out int l)) return l;
+        }
+        return null;
+    }
+
+    private int ProdDeFila(Dictionary<string, string?> fila)
+    {
+        foreach (var clave in new[] { "Prod", "PROD", "Producto" })
+        {
+            if (fila.TryGetValue(clave, out var v) && int.TryParse(v, out int p)) return p;
+        }
+        return 0;
+    }
+
+    private async Task AbrirLoteHijoAsync(Dictionary<string, string?> fila)
+    {
+        if (LoteDeFila(fila) is not int lote || lote <= 0 || lote == _lote) return;
+        _pila.Push((_prod, _lote));
+        _prod = ProdDeFila(fila);
+        _lote = lote;
+        await CargarMovsAsync();
+    }
+
+    private async Task VolverLoteAsync()
+    {
+        if (_pila.Count == 0) return;
+        (_prod, _lote) = _pila.Pop();
+        await CargarMovsAsync();
+    }
+
+    private async Task AbrirEtiquetaAsync()
+    {
+        if (_generandoPdf || _prod <= 0 || _lote <= 0) return;
+        _generandoPdf = true;
+        _aviso = "";
+        try
+        {
+            var r = await Trazabilidad.GetEtiquetaPdfAsync(_prod, _lote);
+            if (!r.Ok || r.Datos is null) { MostrarError(r.Error); return; }
+            await Visor.AbrirAsync($"EtiqTraz_{_prod}_{_lote}.pdf", r.Datos);
+        }
+        finally
+        {
+            _generandoPdf = false;
+        }
+    }
+
+    private void MostrarError(string mensaje)
+    {
+        _tipoAviso = "error";
+        _aviso = mensaje;
+    }
+}

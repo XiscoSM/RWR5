@@ -6,6 +6,7 @@
 @page "/fichaProducto"
 @inject ProductoService Productos
 @inject SesionUsuario Sesion
+@inject NavigationManager Nav
 @inject IJSRuntime JS
 
 <GuardiaModulo CodMenu="7">
@@ -90,7 +91,29 @@
                     {
                         <div><dt>Días de caducidad</dt><dd>@_producto.DiasCaducidad</dd></div>
                     }
+                    @* Datos de compra (paridad con SelectEanInfoBD de R3): coste y proveedor. *@
+                    @if (_producto.UltPrecioCoste > 0)
+                    {
+                        <div><dt>Último precio de coste</dt><dd>@Moneda(_producto.UltPrecioCoste)</dd></div>
+                    }
+                    @if (_producto.Prov > 0)
+                    {
+                        <div><dt>Proveedor</dt><dd>@_producto.Prov@(string.IsNullOrWhiteSpace(_producto.ProdProveedor) ? "" : $" · Ref. {_producto.ProdProveedor}")</dd></div>
+                    }
+                    @if (_producto.ProvAlm > 0 && _producto.ProvAlm != _producto.Prov)
+                    {
+                        <div><dt>Proveedor (este almacén)</dt><dd>@_producto.ProvAlm</dd></div>
+                    }
                 </dl>
+
+                @* Trazabilidad: el visor de movimientos de lote (módulo 7 real de R3). *@
+                @if (_producto.ControlaLotes)
+                {
+                    <button class="r5-btn r5-btn--secundario" style="align-self: flex-start;"
+                            @onclick='() => Nav.NavigateTo($"/trazabilidad?prod={_producto.CodProd}&lote={_producto.Lote ?? 0}")'>
+                        Trazabilidad de lote →
+                    </button>
+                }
 
                 <h3 class="mt-5">Códigos de barras</h3>
                 @if (_errorEans.Length > 0)
