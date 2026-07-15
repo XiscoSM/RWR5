@@ -27,6 +27,16 @@
                                 Deshabilitado="@(_cargando || _lineas.Count == 0)"
                                 OnConfirmar="RegistrarAsync" />
             }
+            else if (_estado == 1)
+            {
+                @* Reabrir un pedido cerrado (el estado es un toggle en el proc, como el
+                   CERRAR/ABRIR de R3): permite volver a añadir mientras central no lo prepare. *@
+                <BotonConfirmar Texto="Reabrir pedido"
+                                Pregunta="@($"¿Reabrir el pedido {NumPedido}? Volverá a estar abierto para añadir o quitar productos.")"
+                                TextoOcupado="Reabriendo…" Ocupado="@_registrando"
+                                Deshabilitado="@_cargando"
+                                OnConfirmar="ReabrirAsync" />
+            }
             <button class="r5-btn r5-btn--secundario" @onclick="AbrirPdfAsync"
                     disabled="@(_generandoPdf || _fecha is null)">
                 <Icono Nombre="informes" Clase="r5-barra__icono" />
@@ -138,6 +148,32 @@
             _estado = 1;
             _tipoAvisoRegistro = "exito";
             _avisoRegistro = $"Pedido {NumPedido} registrado. Central lo recibirá para preparación.";
+        }
+        finally
+        {
+            _registrando = false;
+        }
+    }
+
+    // Reabrir un pedido cerrado (mismo endpoint: el proc conmuta el estado, como en R3).
+    private async Task ReabrirAsync()
+    {
+        if (_registrando || _fecha is null) return;
+
+        _registrando = true;
+        _avisoRegistro = "";
+        try
+        {
+            var respuesta = await Pedidos.RegistrarAsync(Sesion.Usuario!.Almacen.CodAlm, _fecha.Value, NumPedido);
+            if (!respuesta.Ok)
+            {
+                _tipoAvisoRegistro = "error";
+                _avisoRegistro = respuesta.Error;
+                return;
+            }
+            _estado = 0;
+            _tipoAvisoRegistro = "exito";
+            _avisoRegistro = $"Pedido {NumPedido} reabierto: puedes añadir o quitar productos.";
         }
         finally
         {
