@@ -295,7 +295,9 @@
 
             _linea = respuesta.Datos;
             _eanEscaneado = codEan;
-            _cantidad = 1;
+            // EAN de balanza: cantidad embebida en el código (EanProdLote de R3).
+            var parseado = CodigoBarras.TryParse(codigo);
+            _cantidad = parseado is { TraeCantidad: true } ? parseado.Cant : 1;
         }
         finally
         {

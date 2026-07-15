@@ -375,6 +375,16 @@
     {
         if (_linea is null || _fecha is null || string.IsNullOrWhiteSpace(_escaneo)) return;
 
+        // Dígito de control EAN13/14 (aviso de R3): un código mal leído no debe validar.
+        string escaneado = _escaneo.Trim();
+        if (escaneado.Length is >= 5 and <= 14 && escaneado.All(char.IsAsciiDigit)
+            && !CodigoBarras.ValidaEan13_14(escaneado))
+        {
+            MostrarError("EAN incorrecto: dígito de control erróneo (¿lectura defectuosa?).");
+            _escaneo = "";
+            return;
+        }
+
         var usuario = Sesion.Usuario!;
         long.TryParse(_escaneo.Trim(), out long ean);
         var respuesta = await Traspasos.GetLineaProductoAsync(0, DateTime.Today,

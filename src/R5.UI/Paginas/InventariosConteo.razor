@@ -157,8 +157,11 @@
             if (respuesta.Datos.Prod.CodProd <= 0) { MostrarError($"El código {codigo} no corresponde a ningún producto."); return; }
 
             _linea = respuesta.Datos;
-            // Con EAN de caja el conteo natural es una caja; sin él, una unidad.
-            _cantidad = _linea.Ean.EsCaja ? _linea.Ean.UnidCaja : 1;
+            // EAN de balanza: cantidad embebida en el código (EanProdLote de R3).
+            // Con EAN de caja el conteo natural es una caja; sin nada, una unidad.
+            var parseado = CodigoBarras.TryParse(codigo);
+            _cantidad = parseado is { TraeCantidad: true } ? parseado.Cant
+                : _linea.Ean.EsCaja ? _linea.Ean.UnidCaja : 1;
         }
         finally
         {

@@ -681,7 +681,10 @@
 
             _linea = respuesta.Datos;
             _cajas = 1;
-            _cantidad = UnidsCaja;
+            // EAN de balanza/peso variable: la cantidad viene embebida en el código
+            // (port de EanProdLote de R3); si no, arranque por caja.
+            var parseado = CodigoBarras.TryParse(codigo);
+            _cantidad = parseado is { TraeCantidad: true } ? parseado.Cant : UnidsCaja;
             // Estado de trazabilidad/extras de la línea nueva.
             _fechaCaducidad = null;
             _loteProv = "";

@@ -131,6 +131,12 @@
                             <span class="r5-texto-suave r5-texto-sm">
                                 Total: @((_fechaFin.Value - _fechaIni).Days + 1) días (del @Fecha(_fechaIni) al @Fecha(_fechaFin))
                             </span>
+                            @* Doble control de R3: teclear el total de días y cotejarlo. *@
+                            <div class="r5-campo" style="max-width: 220px;">
+                                <label for="diasVerif">Verificación: teclea el total de días</label>
+                                <input id="diasVerif" class="r5-input r5-input--numero" type="number" inputmode="numeric" min="1"
+                                       @bind="_diasTecleados" disabled="@_enviandoSolicitud" />
+                            </div>
                         }
                     }
 
@@ -261,6 +267,7 @@
     private string _detallesConfirma = "";
     private DateTime _fechaIni = DateTime.Today.AddDays(1);
     private DateTime? _fechaFin;
+    private int? _diasTecleados;   // doble control del total de días (R3)
     private bool _enviandoSolicitud;
 
     private GestionEmpresa? GestionSel
@@ -374,6 +381,15 @@
             {
                 if (_fechaFin is null) { MostrarError("Falta la fecha fin."); return; }
                 fechaFin = _fechaFin.Value.Date;
+
+                // Doble control de R3 (Solicitud_ValidarEmpleado 256-262): el total de días
+                // tecleado debe cuadrar con el rango; si no, se cancela la solicitud.
+                int diasReales = (_fechaFin.Value.Date - _fechaIni.Date).Days + 1;
+                if (_diasTecleados is null || _diasTecleados.Value != diasReales)
+                {
+                    MostrarError($"La verificación de días no cuadra: el rango tiene {diasReales} días. Revisa las fechas.");
+                    return;
+                }
                 if (fechaFin < fechaIni) { MostrarError("La fecha fin no puede ser anterior a la de inicio."); return; }
                 if ((fechaFin - fechaIni).Days > 120) { MostrarError("El periodo no puede superar 120 días."); return; }
             }
