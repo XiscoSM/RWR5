@@ -3,6 +3,7 @@
    del coste (cant × último precio de coste), como en R3. Las líneas se van
    sumando al mismo traspaso y al terminar se registra. *@
 @page "/traspasos/alta"
+@page "/traspasos/alta/{FechaRuta}/{NumRuta:int}"
 @inject TraspasoService Traspasos
 @inject AlmacenService Almacenes
 @inject SesionUsuario Sesion
@@ -14,7 +15,7 @@
 
     <div class="r5-fila">
         <button class="r5-btn r5-btn--secundario" @onclick="Volver">← Traspasos</button>
-        <h2>Nuevo traspaso</h2>
+        <h2>@(NumRuta > 0 ? "Continuar traspaso" : "Nuevo traspaso")</h2>
         @if (_numTraspaso > 0)
         {
             <div class="r5-fila" style="margin-left:auto">
@@ -85,22 +86,38 @@
                     <div><dt>Unidades por caja</dt><dd>@UnidCaja</dd></div>
                     <div><dt>Coste unitario</dt><dd>@Moneda(_linea.Prod.UltPrecioCoste)</dd></div>
                     <div><dt>Importe de la línea</dt><dd>@Moneda(Importe)</dd></div>
+                    @* Trazabilidad: lote y su caducidad, visibles como en R3. *@
+                    @if (_linea.Prod.Lote is > 0)
+                    {
+                        <div><dt>Lote</dt><dd>@_linea.Prod.Lote</dd></div>
+                    }
+                    @if (_linea.Prod.FechaCaducidad is not null && _linea.Prod.DiasCaducidad > 0)
+                    {
+                        <div><dt>Fecha caducidad</dt><dd>@_linea.Prod.FechaCaducidad?.ToString("dd/MM/yy")</dd></div>
+                    }
+                    @* Acumulado: lo que ya lleva el traspaso de este producto. La cantidad
+                       introducida se SUMA (negativa = corrige/devuelve). *@
+                    @if (_linea.CantEnv != 0)
+                    {
+                        <div><dt>Ya en el traspaso</dt><dd>@Cantidad(_linea.CantEnv, _linea.Prod.DecimalesEnCant)</dd></div>
+                        <div><dt>Total tras añadir</dt><dd><strong>@Cantidad(_linea.CantEnv + _cantidad, _linea.Prod.DecimalesEnCant)</strong></dd></div>
+                    }
                 </dl>
 
                 <div class="r5-campo">
                     <label for="cantTraspaso">Cantidad a traspasar</label>
                     <div class="r5-fila">
-                        <button class="r5-btn r5-btn--secundario" @onclick="() => SumarCajas(-1)"
-                                disabled="@(_cantidad < UnidCaja)">− caja</button>
+                        <button class="r5-btn r5-btn--secundario" @onclick="() => SumarCajas(-1)">− caja</button>
                         <input id="cantTraspaso" class="r5-input r5-input--numero" type="number" inputmode="decimal"
-                               step="@(_linea.Prod.DecimalesEnCant ? "0.001" : "1")" min="0"
+                               step="@(_linea.Prod.DecimalesEnCant ? "0.001" : "1")"
                                @bind="_cantidad" @bind:event="oninput" />
                         <button class="r5-btn r5-btn--secundario" @onclick="() => SumarCajas(1)">+ caja (@UnidCaja)</button>
                     </div>
+                    <span class="r5-texto-suave r5-texto-sm">Negativa = corrige lo ya enviado (el total no puede quedar por debajo de 0).</span>
                 </div>
 
                 <button class="r5-btn r5-btn--primario r5-btn--bloque" @onclick="AnadirAsync"
-                        disabled="@(_anadiendo || _cantidad <= 0)">
+                        disabled="@(_anadiendo || _cantidad == 0)">
                     @(_anadiendo ? "Añadiendo…" : $"Añadir {Cantidad(_cantidad, _linea.Prod.DecimalesEnCant)} al traspaso")
                 </button>
             </div>
@@ -124,6 +141,11 @@
 </GuardiaModulo>
 
 @code {
+    // Reanudación: si la ruta trae fecha+número, se carga ese traspaso pendiente
+    // y se sigue añadiendo líneas sobre él (paridad con retomar de R3).
+    [Parameter] public string? FechaRuta { get; set; }
+    [Parameter] public int NumRuta { get; set; }
+
     private short? _codAlmDest;
     private Almacen? _almDest;
     private string _codigo = "";
@@ -140,12 +162,46 @@
     private int _lineasAnadidas;
     private List<TraspasoLin> _lineasDoc = new();
     private bool _cargandoLineas;
-    private readonly DateTime _fecha = DateTime.Today;
+    private DateTime _fecha = DateTime.Today;   // al reanudar se toma la del traspaso
 
-    // Foco directo al almacén de destino al entrar (el autofocus de Blazor no dispara al navegar).
+    protected override async Task OnInitializedAsync()
+    {
+        if (NumRuta <= 0 || string.IsNullOrEmpty(FechaRuta)
+            || !DateTime.TryParse(FechaRuta, out DateTime fecha)) return;
+
+        _ocupado = true;
+        try
+        {
+            var cab = await Traspasos.GetCabeceraAsync(NumRuta, fecha);
+            if (!cab.Ok || cab.Datos is null || cab.Datos.NumTraspaso <= 0)
+            {
+                MostrarError($"No se pudo cargar el traspaso {NumRuta}: {cab.Error}");
+                return;
+            }
+            if (cab.Datos.Registrado)
+            {
+                MostrarError($"El traspaso {NumRuta} ya está registrado: no admite más líneas.");
+                return;
+            }
+
+            _fecha = fecha;
+            _numTraspaso = cab.Datos.NumTraspaso;
+            _almDest = cab.Datos.AlmDest;
+            _codAlmDest = cab.Datos.AlmDest?.CodAlm;
+            await RefrescarLineasAsync();
+            _lineasAnadidas = _lineasDoc.Count;
+        }
+        finally
+        {
+            _ocupado = false;
+        }
+    }
+
+    // Foco directo al almacén de destino al entrar (el autofocus de Blazor no dispara al
+    // navegar); al reanudar, el destino ya está fijado y el foco va al escáner.
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender) await JS.InvokeVoidAsync("r5.seleccionar", "almDestino");
+        if (firstRender) await JS.InvokeVoidAsync("r5.seleccionar", _numTraspaso > 0 ? "busquedaTraspaso" : "almDestino");
     }
 
     private short UnidCaja => _linea is null ? (short)1
@@ -187,11 +243,9 @@
         _aviso = "";
     }
 
-    private void SumarCajas(int cajas)
-    {
-        decimal nueva = _cantidad + cajas * UnidCaja;
-        _cantidad = nueva < 0 ? 0 : nueva;
-    }
+    // Sin suelo en 0: la cantidad puede quedar negativa para corregir lo ya enviado
+    // (la validación del total la hace AnadirAsync contra CantEnv).
+    private void SumarCajas(int cajas) => _cantidad += cajas * UnidCaja;
 
     private async Task BuscarAsync()
     {
@@ -216,6 +270,26 @@
             if (!respuesta.Ok || respuesta.Datos is null) { MostrarError(respuesta.Error); return; }
             if (respuesta.Datos.Prod.CodProd <= 0) { MostrarError($"El código {codigo} no corresponde a ningún producto."); return; }
 
+            // Trazabilidad del lote (mismas reglas que R3):
+            // - Lote caducado: bloqueado si el destino es Tienda (tipo 0); aviso en otro caso.
+            // - Fecha de curación no alcanzada: bloqueado siempre.
+            var prod = respuesta.Datos.Prod;
+            if (prod.Lote is > 0 && prod.FechaCaducidad is not null && prod.FechaCaducidad.Value.Date < DateTime.Today)
+            {
+                if (_almDest.Tipo == 0)
+                {
+                    MostrarError($"Lote caducado ({prod.FechaCaducidad:dd/MM/yy}): no se permite traspasar a una tienda.");
+                    return;
+                }
+                _tipoAviso = "aviso";
+                _aviso = $"Ojo: el lote está caducado ({prod.FechaCaducidad:dd/MM/yy}). El destino no es tienda, se permite bajo tu responsabilidad.";
+            }
+            if (prod.FechaCuracion is not null && prod.FechaCuracion.Value.Date > DateTime.Today)
+            {
+                MostrarError($"El lote no ha alcanzado la fecha de curación ({prod.FechaCuracion:dd/MM/yy}): no se puede traspasar.");
+                return;
+            }
+
             _linea = respuesta.Datos;
             _eanEscaneado = codEan;
             _cantidad = UnidCaja;
@@ -230,11 +304,19 @@
 
     private async Task AnadirAsync()
     {
-        if (_anadiendo || _linea is null || _almDest is null || _cantidad <= 0) return;
+        if (_anadiendo || _linea is null || _almDest is null || _cantidad == 0) return;
 
         // Tope de sanidad: una lectura del escaner caida en el campo cantidad (>=10.000)
         // no puede acabar grabada como unidades.
-        if (_cantidad >= 10000) { MostrarError($"Cantidad {_cantidad} no valida: ¿has escaneado un codigo en el campo de cantidad?"); return; }
+        if (Math.Abs(_cantidad) >= 10000) { MostrarError($"Cantidad {_cantidad} no valida: ¿has escaneado un codigo en el campo de cantidad?"); return; }
+
+        // Negativos = corrección/devolución sobre lo ya enviado; el acumulado del producto
+        // en el traspaso no puede quedar por debajo de cero (misma regla que R3).
+        if (_cantidad < 0 && _linea.CantEnv + _cantidad < 0)
+        {
+            MostrarError($"La cantidad total del producto no puede quedar negativa (ya enviado: {Cantidad(_linea.CantEnv, _linea.Prod.DecimalesEnCant)}).");
+            return;
+        }
 
         _anadiendo = true;
         _aviso = "";
@@ -248,7 +330,7 @@
                 CodAlmDest = _almDest.CodAlm,
                 CodProd = _linea.Prod.CodProd,
                 CodEan = _eanEscaneado,
-                Cajas = (short)(UnidCaja > 0 ? Math.Ceiling(_cantidad / UnidCaja) : 0),
+                Cajas = (short)(Math.Sign(_cantidad) * Math.Max(1, (int)(UnidCaja > 0 ? Math.Ceiling(Math.Abs(_cantidad) / UnidCaja) : 1))),
                 UnidCaja = UnidCaja,
                 Cant = _cantidad,
                 Importe = Importe,

@@ -27,6 +27,11 @@
             </button>
             @if (Reg == 0 && !_registrado)
             {
+                @* Retomar: vuelve al alta con este traspaso cargado para seguir añadiendo. *@
+                <button class="r5-btn r5-btn--secundario" disabled="@(_cargando || _fecha is null)"
+                        @onclick='() => Nav.NavigateTo($"/traspasos/alta/{FechaRuta}/{NumTraspaso}")'>
+                    + Añadir líneas
+                </button>
                 <BotonConfirmar Texto="Registrar traspaso"
                                 Pregunta="@($"¿Registrar el traspaso {NumTraspaso} con {_lineas.Count} líneas? Mueve el stock y no se puede deshacer.")"
                                 TextoOcupado="Registrando…" Ocupado="@_registrando"
