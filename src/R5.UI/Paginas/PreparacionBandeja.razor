@@ -18,6 +18,14 @@
         <button class="r5-btn r5-btn--secundario" @onclick='() => Nav.NavigateTo("/preparacionWww")'>
             Pedidos web →
         </button>
+        @* Asignación masiva (BAsigTodos/bPrepararAll de R3): todos los cerrados a mí. *@
+        @if (_verCerrados && _preparaciones.Count > 0)
+        {
+            <BotonConfirmar Texto="@($"Asignarme todos ({_preparaciones.Count})")"
+                            Pregunta="@($"¿Asignarte los {_preparaciones.Count} pedidos cerrados para prepararlos tú?")"
+                            TextoOcupado="Asignando…" Ocupado="@_asignandoTodos"
+                            OnConfirmar="AsignarTodosAsync" />
+        }
         @* El pool cambia según trabajan otros preparadores: refresco manual para no
            quedarse con una foto vieja (la lista no se auto-actualiza). *@
         <button class="r5-btn r5-btn--fantasma" style="margin-left:auto" @onclick="CargarAsync" disabled="@_cargando">
@@ -69,6 +77,29 @@
 
 @code {
     private bool _verCerrados;
+    private bool _asignandoTodos;
+
+    // Asignación masiva (bPrepararAll de R3): bucle de asignar sobre los cerrados listados.
+    private async Task AsignarTodosAsync()
+    {
+        if (_asignandoTodos || !Sesion.Autenticado || _preparaciones.Count == 0) return;
+        _asignandoTodos = true;
+        try
+        {
+            int ok = 0, fallos = 0;
+            foreach (var p in _preparaciones.ToList())
+            {
+                var r = await Preparaciones.AsignarAsync(p.Fecha, p.Pedido, Sesion.Usuario!.CodUsuario);
+                if (r.Ok) ok++; else fallos++;
+            }
+            _error = fallos > 0 ? $"{ok} pedidos asignados; {fallos} fallaron (reintenta o revisa)." : "";
+        }
+        finally
+        {
+            _asignandoTodos = false;
+        }
+        await CargarAsync();
+    }
     private bool _cargando = true;
     private string _error = "";
     private List<PrepPedCentral> _preparaciones = new();

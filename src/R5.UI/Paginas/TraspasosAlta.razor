@@ -52,13 +52,27 @@
     else
     {
         <div class="r5-tarjeta r5-columna">
-            <div class="r5-fila">
+            <div class="r5-fila" style="flex-wrap: wrap;">
                 <span class="r5-texto-suave">Destino:</span>
                 <strong>@_almDest.CodAlm · @_almDest.DescAlm</strong>
                 @if (_numTraspaso == 0)
                 {
                     <button class="r5-btn r5-btn--fantasma" @onclick="CambiarDestino">Cambiar</button>
                 }
+                @* Vinculación opcional a un pedido central (cara pedido de R3): las líneas
+                   traspasadas descuentan del pedido (fechaPedido/numPedido al proc). *@
+                <div class="r5-fila" style="margin-left:auto; align-items: flex-end;">
+                    <div class="r5-campo" style="min-width: 170px;">
+                        <label for="numPedidoTrasp">Pedido central (opcional)</label>
+                        <input id="numPedidoTrasp" class="r5-input r5-input--numero" type="text" inputmode="numeric"
+                               @bind="_numPedidoTexto" disabled="@(_numTraspaso > 0)" />
+                    </div>
+                    <div class="r5-campo" style="min-width: 160px;">
+                        <label for="fechaPedidoTrasp">Fecha del pedido</label>
+                        <input id="fechaPedidoTrasp" class="r5-input" type="date"
+                               @bind="_fechaPedido" disabled="@(_numTraspaso > 0)" />
+                    </div>
+                </div>
             </div>
 
             <form @onsubmit="BuscarAsync" class="r5-buscador">
@@ -171,6 +185,11 @@
     // Comentario de línea diferido: se graba justo después de insertar la línea.
     private string _comentarioLinea = "";
     private SelectorComentario? _selectorComentLinea;
+
+    // Vinculación opcional a pedido central (cara pedido del módulo dual de R3).
+    private string _numPedidoTexto = "";
+    private DateTime _fechaPedido = DateTime.Today;
+    private int NumPedidoVinculado => int.TryParse(_numPedidoTexto.Trim(), out int n) && n > 0 ? n : 0;
     private int _lineasAnadidas;
     private List<TraspasoLin> _lineasDoc = new();
     private bool _cargandoLineas;
@@ -278,7 +297,8 @@
             else if (int.TryParse(codigo, out int cod) && cod > 0) codProd = cod;
             else { MostrarError("Introduce un código numérico (producto o EAN)."); return; }
 
-            var respuesta = await Traspasos.GetLineaProductoAsync(_numTraspaso, _fecha, origen, _almDest.CodAlm, codProd, codEan);
+            var respuesta = await Traspasos.GetLineaProductoAsync(_numTraspaso, _fecha, origen, _almDest.CodAlm, codProd, codEan,
+                NumPedidoVinculado > 0 ? _fechaPedido : null, NumPedidoVinculado);
             if (!respuesta.Ok || respuesta.Datos is null) { MostrarError(respuesta.Error); return; }
             if (respuesta.Datos.Prod.CodProd <= 0) { MostrarError($"El código {codigo} no corresponde a ningún producto."); return; }
 
@@ -349,8 +369,10 @@
                 CodUsuario = Sesion.Usuario.CodUsuario,
                 Lote = _linea.Prod.Lote ?? 0,
                 Registrado = false,
-                FechaPedido = new DateTime(1900, 1, 1),
-                NumPedido = 0
+                // Vinculado a pedido central: la línea descuenta del pedido (como la cara
+                // pedido de R3). Sin vínculo: los centinelas de siempre (1900-01-01 / 0).
+                FechaPedido = NumPedidoVinculado > 0 ? _fechaPedido : new DateTime(1900, 1, 1),
+                NumPedido = NumPedidoVinculado
             };
             var respuesta = await Traspasos.PostLineaAsync(alta);
             if (!respuesta.Ok || respuesta.Datos is null) { MostrarError(respuesta.Error); return; }

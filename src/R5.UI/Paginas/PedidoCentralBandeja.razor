@@ -4,6 +4,8 @@
    estado; tocar una abre el detalle. *@
 @page "/pedidoCentral"
 @inject PedidoCentralService Pedidos
+@inject ReportService Reports
+@inject IVisorArchivos Visor
 @inject SesionUsuario Sesion
 @inject NavigationManager Nav
 
@@ -15,11 +17,34 @@
             <button class="@(_estado == 0 ? "activo" : "")" @onclick="() => CambiarEstadoAsync(0)" disabled="@_cargando">Abiertos</button>
             <button class="@(_estado == 1 ? "activo" : "")" @onclick="() => CambiarEstadoAsync(1)" disabled="@_cargando">Cerrados</button>
         </div>
-        <button class="r5-btn r5-btn--primario" style="margin-left:auto"
+        @* Impresión agrupada por gama de proveedor (brepPedGama de R3). *@
+        <button class="r5-btn r5-btn--secundario" style="margin-left:auto"
+                @onclick="() => _verPdfGama = !_verPdfGama">
+            PDF por gama
+        </button>
+        <button class="r5-btn r5-btn--primario"
                 @onclick="@(() => Nav.NavigateTo("/pedidoCentral/alta"))">
             + Añadir producto
         </button>
     </div>
+
+    @if (_verPdfGama)
+    {
+        <form class="r5-tarjeta r5-fila" style="flex-wrap: wrap; align-items: flex-end;" @onsubmit="AbrirPdfGamaAsync">
+            <div class="r5-campo" style="min-width: 160px;">
+                <label for="gamaPdf">Gama de proveedor</label>
+                <input id="gamaPdf" class="r5-input r5-input--numero" type="text" inputmode="numeric" @bind="_gamaPdfTexto" />
+            </div>
+            <div class="r5-campo" style="min-width: 160px;">
+                <label for="fechaPdfGama">Fecha de los pedidos</label>
+                <input id="fechaPdfGama" class="r5-input" type="date" @bind="_fechaPdfGama" />
+            </div>
+            <button type="submit" class="r5-btn r5-btn--secundario"
+                    disabled="@(_generandoPdfGama || string.IsNullOrWhiteSpace(_gamaPdfTexto))">
+                @(_generandoPdfGama ? "Generando…" : "Generar PDF")
+            </button>
+        </form>
+    }
 
     @if (_cargando)
     {
@@ -65,6 +90,30 @@
 
 @code {
     private byte _estado;
+
+    // Impresión por gama de proveedor (brepPedGama de R3: Report/PedidoCentralGama).
+    private bool _verPdfGama;
+    private bool _generandoPdfGama;
+    private string _gamaPdfTexto = "";
+    private DateTime _fechaPdfGama = DateTime.Today;
+
+    private async Task AbrirPdfGamaAsync()
+    {
+        if (_generandoPdfGama || !int.TryParse(_gamaPdfTexto.Trim(), out int gama) || gama <= 0) return;
+        _generandoPdfGama = true;
+        _error = "";
+        try
+        {
+            var r = await Reports.GetPedidoCentralGamaPdfAsync(gama, _fechaPdfGama,
+                _estado, Sesion.Usuario?.Almacen.CodAlm ?? 0);
+            if (!r.Ok || r.Datos is null) { _error = "PDF por gama: " + r.Error; return; }
+            await Visor.AbrirAsync($"PedidosGama_{gama}_{_fechaPdfGama:yyyyMMdd}.pdf", r.Datos);
+        }
+        finally
+        {
+            _generandoPdfGama = false;
+        }
+    }
     private bool _cargando = true;
     private string _error = "";
     private List<PedidoCentral> _pedidos = new();
