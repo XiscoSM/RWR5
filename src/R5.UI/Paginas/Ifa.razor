@@ -14,7 +14,56 @@
             <button class="@(!_verRecepciones ? "activo" : "")" aria-pressed="@(!_verRecepciones)" @onclick="() => CambiarVista(false)" disabled="@_cargando">Pedidos</button>
             <button class="@(_verRecepciones ? "activo" : "")" aria-pressed="@_verRecepciones" @onclick="() => CambiarVista(true)" disabled="@_cargando">Recepciones</button>
         </div>
+        <button class="r5-btn r5-btn--secundario" style="margin-left:auto"
+                @onclick="() => _verEnvios = !_verEnvios" disabled="@_enviando">
+            @(_verEnvios ? "Ocultar envíos" : "Envíos a IFA")
+        </button>
     </div>
+
+    @if (_verEnvios)
+    {
+        @* Envíos transaccionales (fase 2, port de R3): ESCRIBEN en el IFA real. El bucle
+           por días replica el While de R3: desde la fecha elegida hasta anteayer. *@
+        <div class="r5-tarjeta r5-columna">
+            <h3 style="margin:0">Envíos a IFA (escriben en la central de compras)</h3>
+            <div class="r5-fila" style="flex-wrap: wrap; align-items: flex-end;">
+                <div class="r5-campo" style="min-width: 220px;">
+                    <label for="tipoEnvio">Tipo de envío</label>
+                    <select id="tipoEnvio" class="r5-select" @onchange='e => _tipoEnvio = e.Value?.ToString() ?? "P"' disabled="@_enviando">
+                        <option value="P">Carga de pedidos</option>
+                        <option value="PM">Pedidos modificados (mantenimiento)</option>
+                        <option value="R">Carga de recepciones</option>
+                        <option value="RM">Recepciones modificadas (mantenimiento)</option>
+                    </select>
+                </div>
+                <div class="r5-campo" style="min-width: 190px;">
+                    <label for="fechaEnvio">Fecha de datos (desde)</label>
+                    <input id="fechaEnvio" class="r5-input" type="date" @bind="_fechaEnvio" disabled="@_enviando" />
+                </div>
+                <BotonConfirmar Texto="Enviar a IFA"
+                                Pregunta="@($"¿Enviar a IFA ({DescTipoEnvio}) desde el {_fechaEnvio:dd/MM/yyyy} hasta anteayer? ESCRIBE en la central de compras real; no se puede deshacer.")"
+                                TextoOcupado="Enviando…" Ocupado="@_enviando"
+                                Deshabilitado="@(_fechaEnvio >= DateTime.Today || _fechaEnvio < DateTime.Today.AddDays(-300))"
+                                OnConfirmar="EnviarAsync" />
+            </div>
+            <span class="r5-texto-suave r5-texto-sm">
+                La fecha debe ser anterior a hoy (máx. 300 días atrás). Se envía día a día, como en R3.
+            </span>
+            @if (_logEnvio.Count > 0)
+            {
+                <div class="r5-tabla-scroll" style="max-height: 260px;">
+                    <table class="r5-tabla">
+                        <tbody>
+                            @foreach (var (linea, i) in _logEnvio.Select((l, i) => (l, i)))
+                            {
+                                <tr @key="i"><td style="@(linea.StartsWith("✗") ? "color: var(--c-error);" : "")">@linea</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    }
 
     <div class="r5-tarjeta r5-columna">
         <div class="r5-fila" style="flex-wrap: wrap; align-items: flex-end;">
@@ -130,6 +179,71 @@
         _verRecepciones = recepciones;
         _aviso = "";
         _consultado = false;
+    }
+
+    // ---- Envíos transaccionales (fase 2, port del While por días de R3) ----
+    private bool _verEnvios;
+    private bool _enviando;
+    private string _tipoEnvio = "P";
+    private DateTime _fechaEnvio = DateTime.Today.AddDays(-2);
+    private List<string> _logEnvio = new();
+
+    private string DescTipoEnvio => _tipoEnvio switch
+    {
+        "PM" => "pedidos modificados",
+        "R" => "carga de recepciones",
+        "RM" => "recepciones modificadas",
+        _ => "carga de pedidos"
+    };
+
+    // Bucle día a día desde la fecha elegida hasta anteayer (mismas cotas que R3:
+    // anterior a hoy, máximo 300 días atrás), con log de resultado por día.
+    private async Task EnviarAsync()
+    {
+        if (_enviando) return;
+        if (_fechaEnvio >= DateTime.Today || _fechaEnvio < DateTime.Today.AddDays(-300))
+        {
+            MostrarError("La fecha debe ser anterior a hoy y no más de 300 días atrás.");
+            return;
+        }
+
+        _enviando = true;
+        _aviso = "";
+        _logEnvio = new();
+        try
+        {
+            DateTime fecha = _fechaEnvio.Date;
+            while (fecha < DateTime.Today.AddDays(-1))
+            {
+                var r = _tipoEnvio switch
+                {
+                    "PM" => await ServicioIfa.EnviarPedidosModificadosAsync(fecha),
+                    "R" => await ServicioIfa.EnviarRecepcionesAsync(fecha),
+                    "RM" => await ServicioIfa.EnviarRecepcionesModificadasAsync(fecha),
+                    _ => await ServicioIfa.EnviarPedidosAsync(fecha)
+                };
+                if (!r.Ok || r.Datos is null)
+                {
+                    _logEnvio.Add($"✗ {fecha:dd/MM/yyyy}: {r.Error}");
+                }
+                else
+                {
+                    var d = r.Datos;
+                    bool ok = string.Equals(d.Respuesta, "OK", StringComparison.OrdinalIgnoreCase);
+                    _logEnvio.Add($"{(ok ? "✓" : "✗")} {fecha:dd/MM/yyyy}: {d.Respuesta} · {d.Lineas} líneas{(ok ? "" : $" · {d.Descripcion}")}");
+                    if (!ok) _logEnvio.Add("✗ ****** REVISAR ******");
+                    foreach (var e in d.Errores) _logEnvio.Add($"✗   {e}");
+                }
+                fecha = fecha.AddDays(1);
+                StateHasChanged();
+            }
+            _tipoAviso = "exito";
+            _aviso = $"Envío de {DescTipoEnvio} terminado: revisa el log por fechas.";
+        }
+        finally
+        {
+            _enviando = false;
+        }
     }
 
     private async Task ConsultarAsync()
