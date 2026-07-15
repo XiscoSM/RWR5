@@ -1,0 +1,523 @@
+@* Editor del cuadrante de horarios (módulo 33 de R3, fHorario): se elige un
+   "pincel" (turno, vacaciones, baja, otros o libre) y se pinta tocando las celdas
+   de semanas futuras. Mismas reglas que R3: no se edita la semana en curso ni
+   anteriores, y los tipos de día (vacaciones/baja/otros) no caen en festivo o
+   domingo para no duplicar el saldo de horas. Deshacer re-graba el valor previo. *@
+@page "/horarios/editor"
+@inject HorariosService ServicioHorarios
+@inject SesionUsuario Sesion
+@inject IVisorArchivos Visor
+@inject NavigationManager Nav
+
+<GuardiaModulo CodMenu="33">
+<div class="r5-columna">
+
+    <div class="r5-tarjeta r5-columna">
+        <div class="r5-fila" style="flex-wrap: wrap;">
+            <div class="r5-campo" style="min-width: 220px;">
+                <label for="seccionEditor">Sección</label>
+                <select id="seccionEditor" class="r5-select" @bind="_seccion">
+                    @foreach (var seccion in _secciones)
+                    {
+                        <option value="@seccion.Seccion">@seccion.DescSeccion</option>
+                    }
+                </select>
+            </div>
+
+            @* Pincel activo: lo que se aplicará al tocar una celda editable. *@
+            <div class="r5-campo">
+                <label>Pincel</label>
+                <span class="cel @_pincel.ClaseColor()" style="border: 1px solid var(--c-borde); border-radius: 6px; min-height: 40px;">
+                    @(_pincel.T == 100 ? "LIBRE" : _pincel.Texto())
+                </span>
+            </div>
+
+            <div class="r5-fila" style="flex-wrap: wrap; align-self: flex-end;">
+                <button class="r5-btn r5-btn--secundario r5-btn--sm" @onclick='() => ElegirPincel(100)'>Libre</button>
+                <button class="r5-btn r5-btn--secundario r5-btn--sm" @onclick='() => ElegirPincel(1)'>Vacaciones</button>
+                <button class="r5-btn r5-btn--secundario r5-btn--sm" @onclick='() => ElegirPincel(99)'>Baja</button>
+                <button class="r5-btn r5-btn--secundario r5-btn--sm" @onclick='() => ElegirPincel(4)'>Otros</button>
+                <button class="r5-btn r5-btn--secundario r5-btn--sm" @onclick="() => _editandoTurno = !_editandoTurno">Turno…</button>
+                <button class="@(_modo == Modo.Copiar ? "r5-btn r5-btn--primario r5-btn--sm" : "r5-btn r5-btn--fantasma r5-btn--sm")"
+                        @onclick="() => CambiarModo(Modo.Copiar)">Copiar celda</button>
+                <button class="@(_modo == Modo.Comentar ? "r5-btn r5-btn--primario r5-btn--sm" : "r5-btn r5-btn--fantasma r5-btn--sm")"
+                        @onclick="() => CambiarModo(Modo.Comentar)">Comentario</button>
+                <button class="r5-btn r5-btn--fantasma r5-btn--sm" @onclick="DeshacerAsync" disabled="@(_ocupado || _pilaCambios.Count == 0)">
+                    Deshacer (@_pilaCambios.Count)
+                </button>
+            </div>
+        </div>
+
+        @if (_editandoTurno)
+        {
+            <form class="r5-fila" style="flex-wrap: wrap;" @onsubmit="AplicarTurno">
+                <div class="r5-campo" style="min-width: 280px;">
+                    <label for="turnoNuevo">Turno (ej. 8:00-15:00 o 9-14 16:30-20:00)</label>
+                    <input id="turnoNuevo" class="r5-input" type="text" @bind="_turnoTexto" @bind:event="oninput" />
+                </div>
+                <button type="submit" class="r5-btn r5-btn--secundario" style="align-self: flex-end;">Usar como pincel</button>
+            </form>
+        }
+
+        <span class="r5-texto-suave r5-texto-sm">
+            @(_modo switch
+            {
+                Modo.Copiar => "Toca una celda para copiar su horario al pincel.",
+                Modo.Comentar => "Toca una celda para añadir o borrar su comentario.",
+                _ => "Toca una celda de una semana futura para aplicarle el pincel. Toca el nombre de un empleado para ver su saldo o cambiarlo de sección."
+            })
+        </span>
+    </div>
+
+    <Aviso Tipo="@_tipoAviso" Mensaje="@_aviso" />
+
+    @* Panel del empleado tocado: saldo y cambio de sección (bSaldoVac/BSeccionUser de R3). *@
+    @if (_empleadoPanel is not null)
+    {
+        <div class="r5-tarjeta r5-fila" style="flex-wrap: wrap;">
+            <div class="r5-ficha__identidad">
+                <span class="r5-ficha__codigo">Empleado @_empleadoPanel.Fila.Usuario</span>
+                <span class="r5-ficha__nombre">@_empleadoPanel.Fila.Nombre</span>
+            </div>
+            @if (_empleadoPanel.Fila.Saldo.Length > 0)
+            {
+                <span class="r5-chip r5-chip--suave">Saldo: @_empleadoPanel.Fila.Saldo</span>
+            }
+            <div class="r5-campo" style="min-width: 200px;">
+                <label for="seccionNueva">Cambiar de sección</label>
+                <select id="seccionNueva" class="r5-select" @bind="_seccionNueva">
+                    @foreach (var seccion in _secciones)
+                    {
+                        <option value="@seccion.Seccion">@seccion.DescSeccion</option>
+                    }
+                </select>
+            </div>
+            <button class="r5-btn r5-btn--secundario" style="align-self: flex-end;"
+                    @onclick="CambiarSeccionAsync" disabled="@(_ocupado || _seccionNueva == _empleadoPanel.Fila.Seccion)">Cambiar</button>
+            <button class="r5-btn r5-btn--fantasma" style="align-self: flex-end;" @onclick="() => _empleadoPanel = null">Cerrar</button>
+        </div>
+    }
+
+    @* Comentario de la celda tocada en modo comentario. *@
+    @if (_comentVm is not null)
+    {
+        <form class="r5-tarjeta r5-columna r5-ancho-form" @onsubmit="GuardarComentarioAsync">
+            <h3>Comentario · @_comentVm.Fila.Nombre · @FechaCelda(_comentVm.Fila.AnyoSemana, _comentDia + 1).ToString("dd/MM/yy")</h3>
+            <div class="r5-campo">
+                <label for="comentCelda">Comentario (en blanco borra el anterior)</label>
+                <input id="comentCelda" class="r5-input" type="text" maxlength="300"
+                       @bind="_comentario" disabled="@_ocupado" />
+            </div>
+            <div class="r5-fila">
+                <button type="submit" class="r5-btn r5-btn--primario" disabled="@_ocupado">Guardar</button>
+                <button type="button" class="r5-btn r5-btn--fantasma" @onclick="() => _comentVm = null">Cancelar</button>
+            </div>
+        </form>
+    }
+
+    @if (_cargando)
+    {
+        <Cargando Texto="Cargando cuadrante…" />
+    }
+    else if (FilasSeccion.Count == 0)
+    {
+        <div class="r5-cargando">
+            <Icono Nombre="horarios" Clase="r5-modulo__icono" />
+            <span>No hay cuadrante para esta sección en @Sesion.Usuario?.Almacen.DescAlm.</span>
+        </div>
+    }
+    else
+    {
+        <div class="r5-tarjeta r5-tabla-scroll">
+            <table class="r5-tabla r5-cuadrante">
+                <thead>
+                    <tr>
+                        <th>Empleado</th>
+                        @foreach (var dia in _dias)
+                        {
+                            <th style="text-align:center">@dia</th>
+                        }
+                        <th>Sald.</th>
+                        <th>Resumen</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var vm in FilasSeccion)
+                    {
+                        @if (vm.Fila.Usuario == 0)
+                        {
+                            <tr class="semana" @key="vm">
+                                <td style="text-align:left; white-space:nowrap;">@vm.Fila.Nombre</td>
+                                @for (int d = 1; d <= 7; d++)
+                                {
+                                    var fecha = FechaCelda(vm.Fila.AnyoSemana, d);
+                                    <td class="@(EsFestivo(fecha) ? "festivo" : "")">@fecha.ToString("dd/MM")</td>
+                                }
+                                <td colspan="2" style="text-align:right;">
+                                    @if (vm.Fila.AnyoSemana > _semanaActual)
+                                    {
+                                        <button class="r5-btn r5-btn--fantasma r5-btn--sm" style="color:#fff;"
+                                                @onclick="() => AbrirPdfSemanaAsync(vm.Fila.AnyoSemana)" disabled="@_ocupado">PDF</button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                        else
+                        {
+                            <tr @key="vm" class="@(vm.Fila.AnyoSemana <= _semanaActual ? "pasada" : "")">
+                                <td class="empleado" @onclick="() => AbrirEmpleado(vm)"><strong>@vm.Fila.Nombre</strong></td>
+                                @for (int d = 0; d < 7; d++)
+                                {
+                                    int dia = d;   // captura estable para el lambda
+                                    var celda = vm.Celdas[dia];
+                                    var fecha = FechaCelda(vm.Fila.AnyoSemana, dia + 1);
+                                    <td>
+                                        <div class="cel @(celda?.ClaseColor() ?? "vacia") @(Editable(vm, fecha) ? "" : "no-editable") @(string.IsNullOrEmpty(celda?.C) ? "" : "con-comentario")"
+                                             title="@Tooltip(celda)"
+                                             @onclick="() => TocarCeldaAsync(vm, dia)">
+                                            @(celda?.Texto() ?? "")
+                                        </div>
+                                    </td>
+                                }
+                                <td class="num">@vm.Fila.Saldo</td>
+                                <td class="r5-texto-suave r5-texto-sm">@vm.Advertencias</td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+</GuardiaModulo>
+
+@code {
+    private static readonly string[] _dias = { "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo" };
+
+    private enum Modo { Pintar, Copiar, Comentar }
+
+    private sealed class FilaVm
+    {
+        public HorarioCuadranteFila Fila { get; init; } = default!;
+        public HorarioCelda?[] Celdas { get; } = new HorarioCelda?[7];
+        public string Advertencias { get; set; } = "";
+    }
+
+    private List<HorarioSeccion> _secciones = new();
+    private byte _seccion;
+    private List<FilaVm> _filas = new();
+    private HashSet<int> _festivos = new();
+    private bool _cargando;
+    private bool _ocupado;
+    private string _aviso = "";
+    private string _tipoAviso = "error";
+
+    private HorarioCelda _pincel = HorarioCelda.Libre();
+    private Modo _modo = Modo.Pintar;
+    private bool _editandoTurno;
+    private string _turnoTexto = "";
+    private readonly Stack<(int Usuario, DateTime Fecha, FilaVm Vm, int Dia, HorarioCelda Anterior)> _pilaCambios = new();
+
+    private FilaVm? _empleadoPanel;
+    private byte _seccionNueva;
+    private FilaVm? _comentVm;
+    private int _comentDia;
+    private string _comentario = "";
+
+    private int _semanaActual;
+    private DateTime _finSemanaActual;
+
+    private List<FilaVm> FilasSeccion => _filas.Where(f => f.Fila.Seccion == _seccion).ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Semana actual con la regla de VB (semana 1 = la del 1 de enero, domingo primero):
+        // debe cuadrar con el AnyoSemana que devuelve el proc, o la frontera editable baila.
+        var cal = System.Globalization.CultureInfo.InvariantCulture.Calendar;
+        _semanaActual = DateTime.Now.Year * 100 +
+            cal.GetWeekOfYear(DateTime.Now, System.Globalization.CalendarWeekRule.FirstDay, DayOfWeek.Sunday);
+        _finSemanaActual = DateTime.Today.AddDays(7 - (int)DateTime.Today.DayOfWeek);
+
+        await CargarAsync();
+    }
+
+    private async Task CargarAsync()
+    {
+        if (!Sesion.Autenticado) return;
+        _cargando = true;
+        _aviso = "";
+        try
+        {
+            short codAlm = Sesion.Usuario!.Almacen.CodAlm;
+            var tareaSecciones = ServicioHorarios.GetSeccionesAsync();
+            var tareaCuadrante = ServicioHorarios.GetCuadranteAsync(codAlm);
+            var tareaCalendario = ServicioHorarios.GetCalendarioAsync(codAlm);
+            await Task.WhenAll(tareaSecciones, tareaCuadrante, tareaCalendario);
+
+            if (!tareaCuadrante.Result.Ok) { MostrarError(tareaCuadrante.Result.Error); return; }
+
+            _secciones = tareaSecciones.Result.Datos ?? new();
+            _festivos = new HashSet<int>(tareaCalendario.Result.Datos ?? new());
+            _filas = (tareaCuadrante.Result.Datos ?? new()).Select(fila =>
+            {
+                var vm = new FilaVm { Fila = fila };
+                for (int d = 0; d < 7 && d < fila.Celdas.Count; d++)
+                    vm.Celdas[d] = HorarioCelda.FromJson(fila.Celdas[d]);
+                vm.Advertencias = HorarioCelda.FromJson(fila.Resumen)?.Advertencias() ?? "";
+                return vm;
+            }).ToList();
+
+            if (_secciones.Count > 0 && _secciones.All(s => s.Seccion != _seccion))
+                _seccion = _secciones[0].Seccion;
+            _pilaCambios.Clear();
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    // Fecha real de una celda a partir del AnyoSemana y el día 1..7 (FechaCelda de R3).
+    private static DateTime FechaCelda(int anyoSemana, int dia)
+    {
+        int anyo = anyoSemana / 100;
+        int semana = anyoSemana % 100 - 1;
+        var fecha = new DateTime(anyo, 1, 1);
+        int primerDia = (int)fecha.DayOfWeek;
+        if (primerDia == 0) primerDia = 7;   // domingo cuenta como 7, no 0 (fix R3 19/12/22)
+        return fecha.AddDays(7 * semana + (dia - primerDia));
+    }
+
+    private bool EsFestivo(DateTime fecha) => _festivos.Contains(fecha.Year * 10000 + fecha.Month * 100 + fecha.Day);
+
+    // Reglas de R3: solo semanas posteriores a la actual, nunca la fila separador, y los
+    // tipos 1..99 del pincel no caen en festivo/domingo (evita duplicar saldo de horas).
+    private bool Editable(FilaVm vm, DateTime fecha)
+        => vm.Fila.Usuario > 0 && fecha > _finSemanaActual;
+
+    private static string Tooltip(HorarioCelda? celda)
+    {
+        if (celda is null) return "";
+        string texto = celda.T == 0
+            ? $"Trabajo · {celda.Minutos() / 60:00}:{celda.Minutos() % 60:00}h"
+            : celda.TipoTexto();
+        if (celda.Advertencias().Length > 0) texto += " " + celda.Advertencias();
+        if (!string.IsNullOrEmpty(celda.C)) texto += " · " + celda.C;
+        return texto;
+    }
+
+    private void ElegirPincel(byte tipo)
+    {
+        _pincel = new HorarioCelda { T = tipo };
+        _modo = Modo.Pintar;
+        _aviso = "";
+    }
+
+    private void CambiarModo(Modo modo)
+    {
+        _modo = _modo == modo ? Modo.Pintar : modo;
+        _aviso = "";
+    }
+
+    // Turno tecleado "8:00-15:00 16:30-20:00" → pincel de trabajo (bNuevoHorario de R3:
+    // pares de horas crecientes; también vale "9-14").
+    private void AplicarTurno()
+    {
+        var trozos = _turnoTexto.Replace(".", ":").Split(new[] { ' ', '-' }, StringSplitOptions.RemoveEmptyEntries);
+        var minutos = new List<short>();
+        foreach (string trozo in trozos)
+        {
+            string hora = trozo.Contains(':') ? trozo : trozo + ":00";
+            if (!TimeSpan.TryParse(hora, out var ts) || ts.TotalMinutes >= 24 * 60)
+            { MostrarError($"Hora no válida: «{trozo}»."); return; }
+            minutos.Add((short)ts.TotalMinutes);
+        }
+        if (minutos.Count == 0 || minutos.Count % 2 != 0)
+        { MostrarError("El turno necesita pares de horas (entrada y salida)."); return; }
+        for (int i = 1; i < minutos.Count; i++)
+        {
+            if (minutos[i] <= minutos[i - 1]) { MostrarError("Las horas deben ir en orden creciente."); return; }
+        }
+        _pincel = new HorarioCelda { T = 0, H = minutos.ToArray() };
+        _editandoTurno = false;
+        _modo = Modo.Pintar;
+        _aviso = "";
+    }
+
+    private async Task TocarCeldaAsync(FilaVm vm, int dia)
+    {
+        if (_ocupado || vm.Fila.Usuario == 0) return;
+        var fecha = FechaCelda(vm.Fila.AnyoSemana, dia + 1);
+
+        switch (_modo)
+        {
+            case Modo.Copiar:
+                var origen = vm.Celdas[dia] ?? HorarioCelda.Libre();
+                _pincel = new HorarioCelda { T = origen.T, H = origen.H };  // el comentario no se copia (R3)
+                _modo = Modo.Pintar;
+                _tipoAviso = "info";
+                _aviso = "Pincel copiado de la celda. Toca otra celda para aplicarlo.";
+                return;
+
+            case Modo.Comentar:
+                _comentVm = vm;
+                _comentDia = dia;
+                _comentario = vm.Celdas[dia]?.C ?? "";
+                _aviso = "";
+                return;
+        }
+
+        // Modo pintar: validaciones del canon R3.
+        if (!Editable(vm, fecha))
+        { MostrarError("No editable: solo se pueden modificar semanas posteriores a la actual."); return; }
+        if (_pincel.T is > 0 and < 100 && (EsFestivo(fecha) || fecha.DayOfWeek == DayOfWeek.Sunday))
+        { MostrarError($"No se puede poner «{_pincel.TipoTexto()}» en festivo o domingo (duplicaría el saldo de horas)."); return; }
+
+        var anterior = vm.Celdas[dia] ?? HorarioCelda.Libre();
+        var nueva = new HorarioCelda { T = _pincel.T, H = _pincel.H };  // sin comentario
+        if (await GrabarCeldaAsync(vm.Fila.Usuario, fecha, nueva))
+        {
+            _pilaCambios.Push((vm.Fila.Usuario, fecha, vm, dia, anterior));
+            vm.Celdas[dia] = nueva;
+        }
+    }
+
+    private async Task<bool> GrabarCeldaAsync(int usuario, DateTime fecha, HorarioCelda celda)
+    {
+        _ocupado = true;
+        _aviso = "";
+        try
+        {
+            var r = await ServicioHorarios.PostCeldaAsync(new HorarioCeldaUpdate
+            {
+                Usuario = usuario,
+                Fecha = fecha,
+                TipoDiaTrab = celda.T,
+                HorarioJson = celda.ToJson(),
+                Minutos = celda.Minutos()
+            });
+            if (!r.Ok) { MostrarError(r.Error); return false; }
+            return true;
+        }
+        finally
+        {
+            _ocupado = false;
+        }
+    }
+
+    private async Task DeshacerAsync()
+    {
+        if (_ocupado || _pilaCambios.Count == 0) return;
+        var cambio = _pilaCambios.Pop();
+        if (await GrabarCeldaAsync(cambio.Usuario, cambio.Fecha, cambio.Anterior))
+        {
+            cambio.Vm.Celdas[cambio.Dia] = cambio.Anterior;
+            _tipoAviso = "info";
+            _aviso = $"Deshecho: {cambio.Vm.Fila.Nombre} · {cambio.Fecha:dd/MM}.";
+        }
+    }
+
+    private async Task GuardarComentarioAsync()
+    {
+        if (_ocupado || _comentVm is null) return;
+        var vm = _comentVm;
+        int dia = _comentDia;
+        var fecha = FechaCelda(vm.Fila.AnyoSemana, dia + 1);
+        var celda = vm.Celdas[dia];
+        string comentario = _comentario.Trim();
+
+        _ocupado = true;
+        _aviso = "";
+        try
+        {
+            // Marcaje ya registrado (fecha pasada con horario o tipo): comentario de
+            // incidencia ligado al marcaje; si no, va dentro del JSON de la celda (R3).
+            if (fecha <= DateTime.Today.AddDays(-2) && celda is not null && celda.T < 100)
+            {
+                var r = await ServicioHorarios.PostComentarioAsync(vm.Fila.Usuario, fecha, comentario);
+                if (!r.Ok) { MostrarError(r.Error); return; }
+                celda.C = comentario.Length == 0 ? null : comentario;
+            }
+            else
+            {
+                var nueva = celda ?? HorarioCelda.Libre();
+                nueva.C = comentario.Length == 0 ? null : comentario;
+                var r = await ServicioHorarios.PostCeldaAsync(new HorarioCeldaUpdate
+                {
+                    Usuario = vm.Fila.Usuario,
+                    Fecha = fecha,
+                    TipoDiaTrab = nueva.T,
+                    HorarioJson = nueva.ToJson(),
+                    Minutos = nueva.Minutos()
+                });
+                if (!r.Ok) { MostrarError(r.Error); return; }
+                vm.Celdas[dia] = nueva;
+            }
+            _comentVm = null;
+            _tipoAviso = "exito";
+            _aviso = comentario.Length == 0 ? "Comentario borrado." : "Comentario guardado.";
+        }
+        finally
+        {
+            _ocupado = false;
+        }
+    }
+
+    private void AbrirEmpleado(FilaVm vm)
+    {
+        if (vm.Fila.Usuario == 0) return;
+        _empleadoPanel = vm;
+        _seccionNueva = vm.Fila.Seccion;
+        _aviso = "";
+    }
+
+    private async Task CambiarSeccionAsync()
+    {
+        if (_ocupado || _empleadoPanel is null || _seccionNueva == _empleadoPanel.Fila.Seccion) return;
+        _ocupado = true;
+        _aviso = "";
+        try
+        {
+            var r = await ServicioHorarios.PostSeccionEmpleadoAsync(_empleadoPanel.Fila.Usuario, _seccionNueva);
+            if (!r.Ok) { MostrarError(r.Error); return; }
+            _tipoAviso = "exito";
+            _aviso = $"{_empleadoPanel.Fila.Nombre} cambiado de sección.";
+            _empleadoPanel = null;
+        }
+        finally
+        {
+            _ocupado = false;
+        }
+        await CargarAsync();
+    }
+
+    // PDF de una semana futura: mismo informe que la vista, acotado a esa semana.
+    private async Task AbrirPdfSemanaAsync(int anyoSemana)
+    {
+        if (_ocupado || !Sesion.Autenticado) return;
+        _ocupado = true;
+        _aviso = "";
+        try
+        {
+            var lunes = FechaCelda(anyoSemana, 1);
+            var r = await ServicioHorarios.GetPdfAsync(Sesion.Usuario!.Almacen.CodAlm, _seccion, historico: false,
+                fechaIni: lunes, fechaFin: lunes.AddDays(6));
+            if (!r.Ok || r.Datos is null) { MostrarError(r.Error); return; }
+            await Visor.AbrirAsync($"Horarios_{_seccion}_{anyoSemana}.pdf", r.Datos);
+        }
+        catch (Exception ex)
+        {
+            MostrarError("No se pudo abrir el PDF: " + ex.Message);
+        }
+        finally
+        {
+            _ocupado = false;
+        }
+    }
+
+    private void MostrarError(string mensaje)
+    {
+        _tipoAviso = "error";
+        _aviso = mensaje.Length > 0 ? mensaje : "Operación no realizada.";
+    }
+}

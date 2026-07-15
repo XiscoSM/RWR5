@@ -24,7 +24,10 @@
                 <button class="@(!_historico ? "activo" : "")" @onclick="() => CambiarHistoricoAsync(false)" disabled="@_cargando">Actual</button>
                 <button class="@(_historico ? "activo" : "")" @onclick="() => CambiarHistoricoAsync(true)" disabled="@_cargando">Histórico</button>
             </div>
-            <button class="r5-btn r5-btn--secundario" style="margin-left:auto; align-self: flex-end;"
+            <a class="r5-btn r5-btn--secundario" style="margin-left:auto; align-self: flex-end;" href="/horarios/editor">
+                Editar cuadrante
+            </a>
+            <button class="r5-btn r5-btn--secundario" style="align-self: flex-end;"
                     @onclick="AbrirPdfAsync" disabled="@(_generandoPdf || _semana is null || _semana.Filas.Count == 0)">
                 <Icono Nombre="informes" Clase="r5-barra__icono" />
                 @(_generandoPdf ? "Generando…" : "PDF")

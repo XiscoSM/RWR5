@@ -671,3 +671,30 @@ h3 { font-size: var(--texto-lg); }
    navegador NO estira el elemento (los márgenes auto anulan el stretch) y la tarjeta
    encogía a su contenido, cortando placeholders y campos. */
 .r5-ancho-form { width: 100%; max-width: 640px; margin-left: auto; margin-right: auto; }
+
+/* ---------- Cuadrante de horarios (editor módulo 33) ----------
+   Colores del canon R3: mañana amarillo, tarde salmón, partido azul,
+   tipos de día (vacaciones/baja/otros) gris, libre gris pleno,
+   separador de semana verde azulado y festivos en rojo. */
+.r5-cuadrante td { padding: 0; }
+.r5-cuadrante .cel {
+    min-width: 92px; min-height: 44px; padding: 4px 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: var(--texto-sm); text-align: center; cursor: pointer;
+    border: 1px solid transparent; user-select: none;
+}
+.r5-cuadrante .cel.manana { background: #fffbd6; }
+.r5-cuadrante .cel.tarde { background: #ffd9c4; }
+.r5-cuadrante .cel.partido { background: #cfe8f5; }
+.r5-cuadrante .cel.tipo { background: #e3e3e3; color: #444; }
+.r5-cuadrante .cel.libre { background: #bdbdbd; }
+.r5-cuadrante .cel.vacia { background: #efefef; }
+.r5-cuadrante .cel.no-editable { cursor: not-allowed; opacity: 0.75; }
+.r5-cuadrante .cel.con-comentario { border: 2px solid #ff4500; }
+.r5-cuadrante tr.semana td {
+    background: #20b2aa; color: #fff; font-weight: 600;
+    padding: 4px 6px; text-align: center; font-size: var(--texto-sm);
+}
+.r5-cuadrante tr.semana td.festivo { color: #ffd0d0; font-weight: 700; }
+.r5-cuadrante .empleado { padding: 4px 8px; white-space: nowrap; }
+.r5-cuadrante .pasada .empleado { background: #e8e8e8; color: var(--c-texto-suave); }
