@@ -1,0 +1,333 @@
+@* Factura simplificada de TPV (módulo 28 de R3): 1) cliente por CIF (buscar o dar
+   de alta con validación NIF/NIE/CIF), 2) escanear tickets a la prefactura,
+   3) facturar; histórico con PDF, mail y borrado. Sin cajón ni cobro: el ticket
+   ya está cobrado en el TPV, aquí solo se convierte en factura. *@
+@page "/facturaTpv"
+@inject FacturaTpvService Facturas
+@inject IVisorArchivos Visor
+@inject SesionUsuario Sesion
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<GuardiaModulo CodMenu="28">
+<div class="r5-columna">
+
+    @* ---------- Paso 1: cliente por CIF ---------- *@
+    <div class="r5-tarjeta r5-columna">
+        <div class="r5-fila" style="flex-wrap: wrap; align-items: flex-end;">
+            <div class="r5-campo" style="min-width: 200px;">
+                <label for="cifCliente">CIF / NIF del cliente</label>
+                <input id="cifCliente" class="r5-input" type="text" maxlength="9" autofocus
+                       @bind="_cif" @bind:event="oninput" disabled="@_ocupado" />
+            </div>
+            <button class="r5-btn r5-btn--secundario" @onclick="BuscarClienteAsync"
+                    disabled="@(_ocupado || _cif.Trim().Length == 0)">Buscar</button>
+            @if (_cliente is not null)
+            {
+                <span class="r5-chip r5-chip--suave">@_cliente.NombreCompleto · Cliente @_cliente.Cliente</span>
+                <button class="r5-btn r5-btn--fantasma" @onclick="() => _editandoCliente = !_editandoCliente">Editar ficha</button>
+            }
+        </div>
+
+        @if (_editandoCliente)
+        {
+            <form class="r5-columna" @onsubmit="GuardarClienteAsync">
+                <div class="r5-fila" style="flex-wrap: wrap;">
+                    <div class="r5-campo" style="flex:1; min-width: 180px;">
+                        <label>Nombre</label>
+                        <input class="r5-input" type="text" maxlength="40" @bind="_ficha.Nombre" />
+                    </div>
+                    <div class="r5-campo" style="flex:1; min-width: 180px;">
+                        <label>Apellidos</label>
+                        <input class="r5-input" type="text" maxlength="60" @bind="_ficha.Apellidos" />
+                    </div>
+                </div>
+                <div class="r5-fila" style="flex-wrap: wrap;">
+                    <div class="r5-campo" style="flex:2; min-width: 220px;">
+                        <label>Dirección</label>
+                        <input class="r5-input" type="text" maxlength="80" @bind="_ficha.Direccion" />
+                    </div>
+                    <div class="r5-campo" style="min-width: 100px;">
+                        <label>C.P.</label>
+                        <input class="r5-input r5-input--numero" type="text" maxlength="5" @bind="_ficha.CP" />
+                    </div>
+                    <div class="r5-campo" style="flex:1; min-width: 180px;">
+                        <label>Email</label>
+                        <input class="r5-input" type="email" maxlength="60" @bind="_ficha.Email" />
+                    </div>
+                </div>
+                <div class="r5-campo">
+                    <label>Observaciones para imprimir en la factura (opcional)</label>
+                    <input class="r5-input" type="text" maxlength="100" @bind="_ficha.ObservacionPrint" />
+                </div>
+                <div class="r5-fila">
+                    <button type="submit" class="r5-btn r5-btn--primario" disabled="@_ocupado">
+                        @(_ficha.Cliente > 0 ? "Guardar cliente" : "Dar de alta el cliente")
+                    </button>
+                    <button type="button" class="r5-btn r5-btn--fantasma" @onclick="() => _editandoCliente = false">Cancelar</button>
+                </div>
+            </form>
+        }
+    </div>
+
+    <Aviso Tipo="@_tipoAviso" Mensaje="@_aviso" />
+
+    @if (_cliente is { Cliente: > 0 })
+    {
+        @* ---------- Paso 2: tickets a la prefactura ---------- *@
+        <div class="r5-tarjeta r5-columna">
+            <div class="r5-fila" style="flex-wrap: wrap;">
+                <h3 style="margin:0">Tickets a facturar @(_preFactura > 0 ? $"· Prefactura {_preFactura}" : "")</h3>
+                @if (_preFactura > 0)
+                {
+                    <BotonConfirmar Texto="FACTURAR"
+                                    Pregunta="@($"¿Emitir la factura de {_cliente.NombreCompleto} con los tickets añadidos? Genera la factura fiscal.")"
+                                    TextoOcupado="Facturando…" Ocupado="@_ocupado"
+                                    OnConfirmar="FacturarAsync" />
+                }
+            </div>
+            <form @onsubmit="AnadirTicketAsync" class="r5-buscador">
+                <input id="eanTicketFact" class="r5-input" type="text" inputmode="numeric"
+                       placeholder="Escanea el código del ticket"
+                       @bind="_eanTicket" @bind:event="oninput" disabled="@_ocupado" />
+                <button type="submit" class="r5-btn r5-btn--secundario"
+                        disabled="@(_ocupado || string.IsNullOrWhiteSpace(_eanTicket))">Añadir</button>
+            </form>
+            <span class="r5-texto-suave r5-texto-sm">Cada ticket escaneado se suma a la prefactura del cliente.</span>
+        </div>
+
+        @* ---------- Paso 3: histórico (prefacturas y facturas del cliente) ---------- *@
+        <div class="r5-tarjeta r5-columna">
+            <div class="r5-fila">
+                <h3 style="margin:0">Prefacturas y facturas del cliente</h3>
+                <button class="r5-btn r5-btn--fantasma" style="margin-left:auto" @onclick="CargarRelacionAsync" disabled="@_ocupado">Actualizar</button>
+            </div>
+            @if (_relacion.Count == 0)
+            {
+                <p class="r5-texto-suave">Sin prefacturas ni facturas.</p>
+            }
+            else
+            {
+                <div class="r5-tabla-scroll">
+                    <table class="r5-tabla">
+                        <thead>
+                            <tr>
+                                @foreach (var col in _columnasRelacion)
+                                {
+                                    <th>@col</th>
+                                }
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var (fila, i) in _relacion.Select((f, i) => (f, i)))
+                            {
+                                <tr @key="i">
+                                    @foreach (var col in _columnasRelacion)
+                                    {
+                                        <td>@(fila.TryGetValue(col, out var v) ? v : "")</td>
+                                    }
+                                    <td class="num">
+                                        @if (FacturaDeFila(fila) is { Length: > 0 } numFact)
+                                        {
+                                            <button class="r5-btn r5-btn--fantasma r5-btn--sm" @onclick="() => AbrirPdfAsync(numFact)" disabled="@_ocupado">PDF</button>
+                                            @if (_cliente.Email.Length > 0)
+                                            {
+                                                <button class="r5-btn r5-btn--fantasma r5-btn--sm" @onclick="() => EnviarMailAsync(numFact)" disabled="@_ocupado">Mail</button>
+                                            }
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    }
+</div>
+</GuardiaModulo>
+
+@code {
+    private string _cif = "";
+    private ClienteTpv? _cliente;
+    private ClienteTpv _ficha = new();
+    private bool _editandoCliente;
+    private bool _ocupado;
+    private string _aviso = "";
+    private string _tipoAviso = "error";
+
+    private int _preFactura;
+    private string _eanTicket = "";
+    private List<Dictionary<string, string?>> _relacion = new();
+    private List<string> _columnasRelacion = new();
+
+    private async Task BuscarClienteAsync()
+    {
+        string cif = _cif.Trim().ToUpperInvariant();
+        if (_ocupado || cif.Length == 0) return;
+
+        // Validación NIF/NIE/CIF española (ValidarCifCliente de R3).
+        if (!ClienteTpv.ValidaCif(cif))
+        {
+            MostrarError($"El CIF/NIF «{cif}» no es válido (letra de control incorrecta).");
+            return;
+        }
+
+        _ocupado = true;
+        _aviso = "";
+        _preFactura = 0;
+        try
+        {
+            var r = await Facturas.GetClienteAsync(cif);
+            if (r.Ok && r.Datos is { Cliente: > 0 })
+            {
+                _cliente = r.Datos;
+                _ficha = r.Datos;
+                _editandoCliente = false;
+                await CargarRelacionAsync();
+            }
+            else
+            {
+                // Cliente nuevo: se abre la ficha para darlo de alta.
+                _cliente = null;
+                _ficha = new ClienteTpv { CIF = cif };
+                _editandoCliente = true;
+                _tipoAviso = "info";
+                _aviso = "Cliente no encontrado: completa la ficha para darlo de alta.";
+            }
+        }
+        finally
+        {
+            _ocupado = false;
+        }
+    }
+
+    private async Task GuardarClienteAsync()
+    {
+        if (_ocupado || !Sesion.Autenticado) return;
+        if (_ficha.Nombre.Trim().Length == 0) { MostrarError("Falta el nombre del cliente."); return; }
+
+        _ocupado = true;
+        _aviso = "";
+        try
+        {
+            var r = await Facturas.GuardarClienteAsync(_ficha, Sesion.Usuario!.CodUsuario);
+            if (!r.Ok) { MostrarError(r.Error); return; }
+            if (r.Datos > 0) _ficha.Cliente = r.Datos;
+            _cliente = _ficha;
+            _editandoCliente = false;
+            _tipoAviso = "exito";
+            _aviso = $"Cliente {_cliente.NombreCompleto} guardado.";
+            await CargarRelacionAsync();
+        }
+        finally
+        {
+            _ocupado = false;
+        }
+    }
+
+    private async Task AnadirTicketAsync()
+    {
+        string ean = _eanTicket.Trim();
+        if (_ocupado || ean.Length == 0 || _cliente is null || !Sesion.Autenticado) return;
+
+        _ocupado = true;
+        _aviso = "";
+        try
+        {
+            var r = await Facturas.AnadirTicketAsync(_preFactura, _cliente.Cliente,
+                Sesion.Usuario!.CodUsuario, ean);
+            if (!r.Ok) { MostrarError(r.Error); return; }
+            if (r.Datos > 0) _preFactura = r.Datos;
+            _tipoAviso = "exito";
+            _aviso = $"Ticket añadido a la prefactura {_preFactura}.";
+            _eanTicket = "";
+            await CargarRelacionAsync();
+        }
+        finally
+        {
+            _ocupado = false;
+            StateHasChanged();
+            await JS.InvokeVoidAsync("r5.seleccionar", "eanTicketFact");
+        }
+    }
+
+    private async Task FacturarAsync()
+    {
+        if (_ocupado || _preFactura <= 0 || !Sesion.Autenticado) return;
+        _ocupado = true;
+        _aviso = "";
+        try
+        {
+            var r = await Facturas.FacturarAsync(_preFactura, Sesion.Usuario!.CodUsuario);
+            if (!r.Ok) { MostrarError(r.Error); return; }
+            _tipoAviso = "exito";
+            _aviso = $"Factura emitida a {_cliente?.NombreCompleto}.";
+            _preFactura = 0;
+            await CargarRelacionAsync();
+        }
+        finally
+        {
+            _ocupado = false;
+        }
+    }
+
+    private async Task CargarRelacionAsync()
+    {
+        if (_cliente is null || !Sesion.Autenticado) return;
+        var r = await Facturas.GetRelacionAsync(_cliente.Cliente, Sesion.Usuario!.CodUsuario);
+        _relacion = r.Datos ?? new();
+        _columnasRelacion = _relacion.Count > 0 ? _relacion[0].Keys.ToList() : new();
+    }
+
+    // El nº de factura, si la fila lo trae (las prefacturas aún no lo tienen).
+    private static string FacturaDeFila(Dictionary<string, string?> fila)
+    {
+        foreach (var clave in new[] { "Factura", "FACTURA", "NumFactura" })
+        {
+            if (fila.TryGetValue(clave, out var v) && !string.IsNullOrWhiteSpace(v)) return v!;
+        }
+        return "";
+    }
+
+    private async Task AbrirPdfAsync(string factura)
+    {
+        _ocupado = true;
+        _aviso = "";
+        try
+        {
+            var r = await Facturas.GetPdfAsync(factura);
+            if (!r.Ok || r.Datos is null) { MostrarError(r.Error); return; }
+            await Visor.AbrirAsync($"FacturaTpv_{factura}.pdf", r.Datos);
+        }
+        finally
+        {
+            _ocupado = false;
+        }
+    }
+
+    private async Task EnviarMailAsync(string factura)
+    {
+        if (_cliente is null || _cliente.Email.Length == 0 || !Sesion.Autenticado) return;
+        _ocupado = true;
+        _aviso = "";
+        try
+        {
+            var r = await Facturas.EnviarMailAsync(factura, Sesion.Usuario!.CodUsuario, _cliente.Email);
+            if (!r.Ok) { MostrarError(r.Error); return; }
+            _tipoAviso = "exito";
+            _aviso = $"Factura {factura} encolada para enviar a {_cliente.Email}.";
+        }
+        finally
+        {
+            _ocupado = false;
+        }
+    }
+
+    private void MostrarError(string mensaje)
+    {
+        _tipoAviso = "error";
+        _aviso = mensaje;
+    }
+}

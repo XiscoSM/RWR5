@@ -97,6 +97,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<TrazabilidadService>();
         builder.Services.AddSingleton<PreparacionWwwService>();
         builder.Services.AddSingleton<PedidoClienteService>();
+        builder.Services.AddSingleton<FacturaTpvService>();
         builder.Services.AddSingleton<GestionesService>();
         builder.Services.AddSingleton<HorariosService>();
         builder.Services.AddSingleton<EnvasadoService>();

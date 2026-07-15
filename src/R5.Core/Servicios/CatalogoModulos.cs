@@ -36,6 +36,8 @@ public static class CatalogoModulos
         [7] = new(7, "Ficha producto", "/fichaProducto", "producto", true, "purple", 40),
         [22] = new(22, "Informes", "/informes", "informes", true, "purple", 41),
         [33] = new(33, "Horarios", "/horarios", "horarios", true, "purple", 42),
+        // Consulta/venta (morado)
+        [28] = new(28, "Factura TPV", "/facturaTpv", "informes", true, "purple", 43),
         // Sistema (gris)
         [6] = new(6, "Cambio almacén", "/cambioAlmacen", "almacen", true, "slate", 50),
         [34] = new(34, "Gestiones", "/gestiones", "gestiones", true, "slate", 51),
