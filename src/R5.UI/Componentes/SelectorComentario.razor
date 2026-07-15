@@ -1,0 +1,161 @@
+@* Selector de comentario de documento (paridad con Bcoment de R3): botón discreto que
+   despliega los comentarios predefinidos del tipo + texto libre. Dos modos:
+   - Con NumDoc > 0: guarda directamente contra el documento/línea (OnGuardado avisa).
+   - Con NumDoc = 0 (diferido): no graba; entrega el texto por OnComentarioListo para
+     que la página lo adjunte a la próxima línea que inserte. *@
+@inject ComentarioService Comentarios
+@inject SesionUsuario Sesion
+
+@if (!_abierto)
+{
+    <button type="button" class="r5-btn r5-btn--fantasma r5-btn--sm" @onclick="AbrirAsync">
+        @(string.IsNullOrEmpty(_texto) ? Etiqueta : $"Comentario: {Recorte(_texto)}")
+    </button>
+}
+else
+{
+    <div class="r5-tarjeta r5-columna" style="gap: var(--esp-2);">
+        <h3 style="margin:0; font-size: var(--texto-md);">@Etiqueta</h3>
+        @if (_cargando)
+        {
+            <Cargando Texto="Cargando comentarios…" />
+        }
+        else
+        {
+            @if (_predefinidos.Count > 0)
+            {
+                <select class="r5-select" @onchange="ElegirPredefinido">
+                    <option value="">— Comentario predefinido —</option>
+                    @foreach (var c in _predefinidos)
+                    {
+                        <option value="@c" selected="@(c == _predefinido)">@c</option>
+                    }
+                </select>
+            }
+            <div class="r5-campo">
+                <label>Texto adicional (opcional)</label>
+                <input class="r5-input" type="text" maxlength="60" @bind="_textoLibre" />
+            </div>
+            <Aviso Mensaje="@_error" ConSonido="false" />
+            <div class="r5-fila">
+                <button type="button" class="r5-btn r5-btn--secundario" @onclick="GuardarAsync"
+                        disabled="@(_guardando || (_predefinido.Length == 0 && _textoLibre.Trim().Length == 0))">
+                    @(_guardando ? "Guardando…" : NumDoc > 0 ? "Guardar comentario" : "Adjuntar a la línea")
+                </button>
+                <button type="button" class="r5-btn r5-btn--fantasma" @onclick="Cerrar">Cancelar</button>
+                @if (!string.IsNullOrEmpty(_texto) && NumDoc == 0)
+                {
+                    <button type="button" class="r5-btn r5-btn--fantasma" @onclick="QuitarAsync">Quitar</button>
+                }
+            </div>
+        }
+    </div>
+}
+
+@code {
+    /// <summary>Tipo de catálogo Y tabla destino (códigos R3: 2 lín. albarán, 3 cab. albarán,
+    /// 5 traspasos, 6 cab. ajuste, 7 lín. ajuste).</summary>
+    [Parameter, EditorRequired] public byte TipoDoc { get; set; }
+
+    /// <summary>Texto del botón plegado.</summary>
+    [Parameter] public string Etiqueta { get; set; } = "Comentario";
+
+    /// <summary>Documento destino: con NumDoc > 0 el guardado es directo; con 0, diferido.</summary>
+    [Parameter] public int NumDoc { get; set; }
+    [Parameter] public int LineaDoc { get; set; }
+    [Parameter] public DateTime Fecha { get; set; } = DateTime.Today;
+
+    /// <summary>Aviso tras guardar directo (para refrescar la página).</summary>
+    [Parameter] public EventCallback OnGuardado { get; set; }
+
+    /// <summary>Modo diferido: entrega el texto compuesto (vacío = quitado).</summary>
+    [Parameter] public EventCallback<string> OnComentarioListo { get; set; }
+
+    private bool _abierto;
+    private bool _cargando;
+    private bool _guardando;
+    private string _error = "";
+    private List<string> _predefinidos = new();
+    private string _predefinido = "";
+    private string _textoLibre = "";
+    private string _texto = "";   // texto compuesto ya adjuntado (modo diferido)
+
+    private static string Recorte(string t) => t.Length <= 24 ? t : t[..24] + "…";
+
+    private async Task AbrirAsync()
+    {
+        _abierto = true;
+        _error = "";
+        if (_predefinidos.Count == 0)
+        {
+            _cargando = true;
+            var r = await Comentarios.GetPredefinidosAsync(TipoDoc);
+            if (r.Ok && r.Datos is not null) _predefinidos = r.Datos;
+            _cargando = false;
+        }
+    }
+
+    private void ElegirPredefinido(ChangeEventArgs e) => _predefinido = e.Value?.ToString() ?? "";
+
+    private void Cerrar()
+    {
+        _abierto = false;
+        _error = "";
+    }
+
+    // El texto final replica el formato de R3: predefinido + "," + texto libre.
+    private string Componer()
+    {
+        string libre = _textoLibre.Trim();
+        if (_predefinido.Length == 0) return libre;
+        return libre.Length == 0 ? _predefinido : $"{_predefinido},{libre}";
+    }
+
+    private async Task GuardarAsync()
+    {
+        string texto = Componer();
+        if (texto.Length == 0) return;
+
+        if (NumDoc <= 0)
+        {
+            // Diferido: la página lo adjuntará a la próxima línea.
+            _texto = texto;
+            _abierto = false;
+            await OnComentarioListo.InvokeAsync(texto);
+            return;
+        }
+
+        _guardando = true;
+        _error = "";
+        try
+        {
+            var r = await Comentarios.PostAsync(TipoDoc, Fecha, NumDoc, LineaDoc,
+                Sesion.Usuario?.CodUsuario ?? 0, texto);
+            if (!r.Ok) { _error = r.Error; return; }
+            _texto = texto;
+            _abierto = false;
+            await OnGuardado.InvokeAsync();
+        }
+        finally
+        {
+            _guardando = false;
+        }
+    }
+
+    private async Task QuitarAsync()
+    {
+        _texto = "";
+        _predefinido = "";
+        _textoLibre = "";
+        _abierto = false;
+        await OnComentarioListo.InvokeAsync("");
+    }
+
+    /// <summary>Limpia el estado tras usar el comentario diferido (lo llama la página).</summary>
+    public void Reset()
+    {
+        _texto = "";
+        _predefinido = "";
+        _textoLibre = "";
+    }
+}

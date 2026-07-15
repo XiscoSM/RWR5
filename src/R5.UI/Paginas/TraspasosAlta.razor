@@ -6,6 +6,7 @@
 @page "/traspasos/alta/{FechaRuta}/{NumRuta:int}"
 @inject TraspasoService Traspasos
 @inject AlmacenService Almacenes
+@inject ComentarioService Comentarios
 @inject ReportService Reports
 @inject IVisorArchivos Visor
 @inject SesionUsuario Sesion
@@ -118,6 +119,11 @@
                     <span class="r5-texto-suave r5-texto-sm">Negativa = corrige lo ya enviado (el total no puede quedar por debajo de 0).</span>
                 </div>
 
+                @* Comentario de línea (predefinidos tipo 5, como el Bcoment de R3):
+                   se adjunta y se graba con la línea al añadirla. *@
+                <SelectorComentario @ref="_selectorComentLinea" TipoDoc="5" Etiqueta="Comentario línea"
+                                    OnComentarioListo="t => _comentarioLinea = t" />
+
                 <button class="r5-btn r5-btn--primario r5-btn--bloque" @onclick="AnadirAsync"
                         disabled="@(_anadiendo || _cantidad == 0)">
                     @(_anadiendo ? "Añadiendo…" : $"Añadir {Cantidad(_cantidad, _linea.Prod.DecimalesEnCant)} al traspaso")
@@ -161,6 +167,10 @@
     private long _eanEscaneado;
     private decimal _cantidad;
     private int _numTraspaso;
+
+    // Comentario de línea diferido: se graba justo después de insertar la línea.
+    private string _comentarioLinea = "";
+    private SelectorComentario? _selectorComentLinea;
     private int _lineasAnadidas;
     private List<TraspasoLin> _lineasDoc = new();
     private bool _cargandoLineas;
@@ -346,6 +356,17 @@
             if (!respuesta.Ok || respuesta.Datos is null) { MostrarError(respuesta.Error); return; }
 
             _numTraspaso = respuesta.Datos.NumTraspaso;
+
+            // Comentario de línea adjuntado: se graba contra la línea recién creada
+            // (mismo orden que R3). Mejor esfuerzo, no bloquea el escaneo siguiente.
+            if (_comentarioLinea.Length > 0)
+            {
+                await Comentarios.PostAsync(5, _fecha, _numTraspaso, respuesta.Datos.Linea,
+                    Sesion.Usuario.CodUsuario, _comentarioLinea);
+                _comentarioLinea = "";
+                _selectorComentLinea?.Reset();
+            }
+
             _lineasAnadidas++;
             _tipoAviso = "exito";
             _aviso = $"{_linea.Prod.DescProd}: {Cantidad(_cantidad, _linea.Prod.DecimalesEnCant)} añadido al traspaso {_numTraspaso}.";

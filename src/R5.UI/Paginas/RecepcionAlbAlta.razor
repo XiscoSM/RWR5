@@ -7,6 +7,7 @@
 @page "/recepcionAlb/alta"
 @page "/recepcionAlb/alta/{FechaRuta}/{NumRuta:int}"
 @inject AlbaranService Albaranes
+@inject ComentarioService Comentarios
 @inject ProveedorService Proveedores
 @inject PedidoCompraService Pedidos
 @inject SesionUsuario Sesion
@@ -25,6 +26,9 @@
                 <span class="r5-chip" style="background: var(--c-primario-claro); color: var(--c-primario-osc);">
                     Albarán @_numAlbaran · @_lineasAnadidas líneas
                 </span>
+                @* Comentario de cabecera del albarán (predefinidos tipo 3, como R3). *@
+                <SelectorComentario TipoDoc="3" Etiqueta="Comentario albarán"
+                                    NumDoc="_numAlbaran" Fecha="_fecha" />
                 <button class="r5-btn r5-btn--primario" @onclick="() => _pidiendoLink = true" disabled="@_registrando">
                     Registrar recepción
                 </button>
@@ -293,10 +297,16 @@
                     </div>
                 }
 
-                <label class="r5-fila" style="gap: var(--esp-2); cursor: pointer;">
-                    <input type="checkbox" @bind="_sinCargo" disabled="@_anadiendo" />
-                    <span>Mercancía sin cargo (no se factura)</span>
-                </label>
+                <div class="r5-fila" style="flex-wrap: wrap;">
+                    <label class="r5-fila" style="gap: var(--esp-2); cursor: pointer;">
+                        <input type="checkbox" @bind="_sinCargo" disabled="@_anadiendo" />
+                        <span>Mercancía sin cargo (no se factura)</span>
+                    </label>
+                    @* Comentario de LÍNEA (predefinidos tipo 2, incluye las anotaciones
+                       S.Cargo): se adjunta y se graba con la línea al añadirla. *@
+                    <SelectorComentario @ref="_selectorComentLinea" TipoDoc="2" Etiqueta="Comentario línea"
+                                        OnComentarioListo="t => _comentarioLinea = t" />
+                </div>
 
                 <div class="r5-fila">
                     <div class="r5-campo" style="flex:1">
@@ -445,6 +455,10 @@
     // Precio abierto y sin cargo (F1.2).
     private decimal? _precioAbierto;
     private bool _sinCargo;
+
+    // Comentario de línea diferido: se graba justo después de insertar la línea.
+    private string _comentarioLinea = "";
+    private SelectorComentario? _selectorComentLinea;
 
     // Aviso (no bloqueante) de nº de albarán de proveedor duplicado: se comprueba una vez.
     private bool _dupComprobado;
@@ -812,6 +826,17 @@
             if (!respuesta.Ok || respuesta.Datos is null) { MostrarError(respuesta.Error); return; }
 
             _numAlbaran = respuesta.Datos.NumDoc;
+
+            // Comentario de línea adjuntado: se graba contra la línea recién creada
+            // (mismo orden que R3: insert de línea + Comentario.InsertBD). Mejor esfuerzo.
+            if (_comentarioLinea.Length > 0)
+            {
+                await Comentarios.PostAsync(2, _fecha, _numAlbaran, respuesta.Datos.LineaDoc,
+                    Sesion.Usuario.CodUsuario, _comentarioLinea);
+                _comentarioLinea = "";
+                _selectorComentLinea?.Reset();
+            }
+
             _lineasAnadidas++;
             _tipoAviso = "exito";
             _aviso = $"{_linea.Prod.DescProd}: {Cantidad(_cantidad, _linea.Prod.DecimalesEnCant)} añadido al albarán {_numAlbaran}.";
