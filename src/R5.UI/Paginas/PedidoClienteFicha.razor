@@ -1,0 +1,473 @@
+@* Ficha del pedido de cliente (módulo 17): cabecera humana ("Se pide a", fecha
+   natural), línea de guía contextual, líneas con acciones por estado, y hojas de
+   añadir/editar producto y editar datos — sin cadenas de popups (rediseño R3). *@
+@page "/pedidoCliente/{Pedido:int}"
+@inject PedidoClienteService Pedidos
+@inject SesionUsuario Sesion
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<GuardiaModulo CodMenu="17">
+<div class="r5-columna">
+
+    <div class="r5-fila" style="flex-wrap: wrap;">
+        <button class="r5-btn r5-btn--secundario" @onclick="Volver">← Pedidos</button>
+        <h2>@(_cab?.NombreCliente is { Length: > 0 } n ? n : $"Pedido {Pedido}")</h2>
+        @if (_cab is not null)
+        {
+            <span class="r5-badge @(_cab.Abierto ? "r5-badge--abierto" : _cab.Vivo ? "r5-badge--neutro" : "r5-badge--cerrado")">
+                @_cab.DescEstado
+            </span>
+        }
+        @if (_cab is not null)
+        {
+            <div class="r5-fila" style="margin-left:auto; flex-wrap: wrap;">
+                @if (_cab.Abierto)
+                {
+                    <button class="r5-btn r5-btn--fantasma" @onclick="() => _editandoCab = !_editandoCab">Editar datos</button>
+                    <BotonConfirmar Texto="Enviar pedido"
+                                    Pregunta="@($"¿Enviar el pedido de {NombreCliente()} a central? Ya no podrás cambiar las líneas.")"
+                                    TextoOcupado="Enviando…" Ocupado="@_operando"
+                                    Deshabilitado="@(_lineas.Count == 0)"
+                                    OnConfirmar="EnviarAsync" />
+                }
+                @if (_cab.Vivo && _cab.EstadoDoc is >= 1 and <= 2)
+                {
+                    <BotonConfirmar Texto="Preparar todo"
+                                    Pregunta="¿Pasar a preparación todas las líneas pendientes?"
+                                    TextoOcupado="Preparando…" Ocupado="@_operando"
+                                    OnConfirmar="PrepararTodoAsync" />
+                }
+                @if (_cab.Vivo)
+                {
+                    <BotonConfirmar Texto="Cancelar pedido"
+                                    Pregunta="@($"¿ANULAR el pedido de {NombreCliente()}? No se puede deshacer.")"
+                                    TextoOcupado="Cancelando…" Ocupado="@_operando"
+                                    OnConfirmar="CancelarAsync" />
+                }
+            </div>
+        }
+    </div>
+
+    <Aviso Tipo="@_tipoAviso" Mensaje="@_aviso" />
+
+    @if (_cargando)
+    {
+        <Cargando Texto="Cargando pedido…" />
+    }
+    else if (_cab is null)
+    {
+        <Aviso Mensaje="El pedido no existe o no se pudo cargar." OnReintentar="CargarAsync" Reintentando="_cargando" />
+    }
+    else
+    {
+        <div class="r5-tarjeta r5-columna">
+            <dl class="r5-datos">
+                <div><dt>Nº pedido</dt><dd>@_cab.Pedido</dd></div>
+                <div><dt>Teléfono</dt><dd>@(_cab.Telefono > 0 ? _cab.Telefono.ToString() : "—")</dd></div>
+                <div><dt>Se pide a</dt><dd>@(_cab.DescAlm.Length > 0 ? _cab.DescAlm : $"Almacén {_cab.AlmCentral}")</dd></div>
+                <div><dt>Entrega</dt><dd>@FechaHumana(_cab.FechaHoraEntrega)</dd></div>
+                @if (_cab.Observaciones.Length > 0)
+                {
+                    <div><dt>Observaciones</dt><dd>@_cab.Observaciones</dd></div>
+                }
+            </dl>
+            @* Guía contextual: qué hacer ahora según el estado (rediseño R3). *@
+            <Aviso Tipo="info" ConSonido="false" Mensaje="@TextoGuia()" />
+        </div>
+
+        @if (_editandoCab && _cab.Abierto)
+        {
+            <form class="r5-tarjeta r5-columna r5-ancho-form" @onsubmit="GuardarCabAsync">
+                <h3>Editar datos del pedido</h3>
+                <div class="r5-campo">
+                    <label for="edNombre">Nombre del cliente</label>
+                    <input id="edNombre" class="r5-input" type="text" maxlength="50" @bind="_edNombre" />
+                </div>
+                <div class="r5-campo">
+                    <label for="edTel">Teléfono</label>
+                    <input id="edTel" class="r5-input r5-input--numero" type="text" inputmode="numeric" maxlength="15" @bind="_edTelefono" />
+                </div>
+                <div class="r5-fila">
+                    <div class="r5-campo" style="flex:1">
+                        <label for="edFecha">Fecha de entrega</label>
+                        <input id="edFecha" class="r5-input" type="date" @bind="_edFecha" />
+                    </div>
+                    <div class="r5-campo" style="flex:1">
+                        <label for="edHora">Hora</label>
+                        <input id="edHora" class="r5-input" type="time" @bind="_edHora" />
+                    </div>
+                </div>
+                <div class="r5-campo">
+                    <label for="edObs">Observaciones</label>
+                    <input id="edObs" class="r5-input" type="text" maxlength="100" @bind="_edObs" />
+                </div>
+                <div class="r5-fila">
+                    <button type="submit" class="r5-btn r5-btn--primario" disabled="@_operando">Guardar</button>
+                    <button type="button" class="r5-btn r5-btn--fantasma" @onclick="() => _editandoCab = false">Cancelar</button>
+                </div>
+            </form>
+        }
+
+        @if (_cab.Abierto)
+        {
+            <div class="r5-tarjeta r5-columna">
+                <h3 style="margin:0">@(_editLinea > 0 ? "Editar producto" : "Añadir producto")</h3>
+                @if (_editLinea == 0)
+                {
+                    <form @onsubmit="BuscarProductoAsync" class="r5-buscador">
+                        <input id="busquedaPedCliProd" class="r5-input" type="text" inputmode="numeric"
+                               placeholder="Escanea el EAN del producto"
+                               @bind="_codigo" @bind:event="oninput" disabled="@_operando" />
+                        <button type="submit" class="r5-btn r5-btn--secundario"
+                                disabled="@(_operando || string.IsNullOrWhiteSpace(_codigo))">Buscar</button>
+                    </form>
+                }
+                @if (_prodSel is not null)
+                {
+                    <div class="r5-ficha__identidad">
+                        <span class="r5-ficha__codigo">@_prodSel.Prod</span>
+                        <span class="r5-ficha__nombre">@_prodSel.DescProd</span>
+                    </div>
+                    <div class="r5-fila">
+                        <div class="r5-campo" style="flex:1">
+                            <label for="cantPedCli">Cantidad</label>
+                            <input id="cantPedCli" class="r5-input r5-input--numero" type="number" inputmode="decimal"
+                                   step="@(_prodSel.DecimalesEnCant ? "0.001" : "1")" min="0"
+                                   @bind="_cantidad" @bind:event="oninput" />
+                        </div>
+                        <div class="r5-campo" style="flex:2">
+                            <label for="obsPedCli">Observaciones de la línea (opcional)</label>
+                            <input id="obsPedCli" class="r5-input" type="text" maxlength="60" @bind="_obsLinea" />
+                        </div>
+                    </div>
+                    <div class="r5-fila">
+                        <button class="r5-btn r5-btn--primario" style="flex:1" @onclick="ConfirmarProductoAsync"
+                                disabled="@(_operando || _cantidad <= 0)">
+                            @(_operando ? "Guardando…" : _editLinea > 0 ? "Guardar cambios" : $"Añadir {Cantidad(_cantidad, _prodSel.DecimalesEnCant)}")
+                        </button>
+                        <button class="r5-btn r5-btn--fantasma" @onclick="LimpiarProducto">Cancelar</button>
+                    </div>
+                }
+            </div>
+        }
+
+        <div class="r5-tarjeta r5-tabla-scroll">
+            <table class="r5-tabla">
+                <thead><tr><th>Producto</th><th class="num">Cant.</th><th>Estado</th><th>Obs.</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var l in _lineas)
+                    {
+                        <tr @key="l.Linea">
+                            <td>@l.DescProd</td>
+                            <td class="num">@Cantidad(l.Cant, l.DecimalesEnCant)</td>
+                            <td><span class="r5-badge r5-badge--neutro">@l.DescEstado</span></td>
+                            <td>@l.Observaciones</td>
+                            <td class="num">
+                                @if (_cab.Abierto)
+                                {
+                                    <button class="r5-btn r5-btn--fantasma r5-btn--sm" @onclick="() => EditarLinea(l)" disabled="@_operando">Editar</button>
+                                    @if (_lineaBorrando == l.Linea)
+                                    {
+                                        <button class="r5-btn r5-btn--peligro r5-btn--sm" @onclick="() => BorrarLineaAsync(l)" disabled="@_operando">¿Seguro?</button>
+                                        <button class="r5-btn r5-btn--fantasma r5-btn--sm" @onclick="() => _lineaBorrando = 0">No</button>
+                                    }
+                                    else
+                                    {
+                                        <button class="r5-btn r5-btn--fantasma r5-btn--sm" @onclick="() => _lineaBorrando = l.Linea" disabled="@_operando">Quitar</button>
+                                    }
+                                }
+                                else
+                                {
+                                    @foreach (var (texto, estado, peligro) in AccionesLinea(l))
+                                    {
+                                        <button class="r5-btn r5-btn--sm @(peligro ? "r5-btn--peligro" : "r5-btn--secundario")"
+                                                disabled="@_operando" @onclick="() => CambiarEstadoAsync(l, estado)">
+                                            @texto
+                                        </button>
+                                    }
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            @if (_lineas.Count == 0)
+            {
+                <p class="r5-texto-suave">El pedido no tiene productos todavía.</p>
+            }
+        </div>
+    }
+</div>
+</GuardiaModulo>
+
+@code {
+    [Parameter] public int Pedido { get; set; }
+
+    private PedidoClienteCab? _cab;
+    private List<PedidoClienteLin> _lineas = new();
+    private bool _cargando = true;
+    private bool _operando;
+    private string _aviso = "";
+    private string _tipoAviso = "error";
+    private int _lineaBorrando;
+
+    // Hoja añadir/editar producto (una sola hoja, como el rediseño de R3).
+    private string _codigo = "";
+    private PedidoClienteLin? _prodSel;
+    private decimal _cantidad;
+    private string _obsLinea = "";
+    private int _editLinea;   // > 0 = editando esa línea
+
+    // Hoja editar cabecera.
+    private bool _editandoCab;
+    private string _edNombre = "";
+    private string _edTelefono = "";
+    private DateTime _edFecha = DateTime.Today;
+    private TimeOnly _edHora = new(12, 0);
+    private string _edObs = "";
+
+    protected override Task OnInitializedAsync() => CargarAsync();
+
+    private async Task CargarAsync()
+    {
+        _cargando = true;
+        _aviso = "";
+        try
+        {
+            var cab = await Pedidos.GetCabAsync(Pedido);
+            if (!cab.Ok || cab.Datos is null || cab.Datos.Pedido <= 0)
+            {
+                _cab = null;
+                if (!cab.Ok) MostrarError(cab.Error);
+                return;
+            }
+            _cab = cab.Datos;
+            _edNombre = _cab.NombreCliente;
+            _edTelefono = _cab.Telefono > 0 ? _cab.Telefono.ToString() : "";
+            if (_cab.FechaHoraEntrega is DateTime fhe)
+            {
+                _edFecha = fhe.Date;
+                _edHora = TimeOnly.FromDateTime(fhe);
+            }
+            _edObs = _cab.Observaciones;
+
+            var lin = await Pedidos.GetLineasAsync(Pedido);
+            _lineas = lin.Datos ?? new();
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private string NombreCliente() => _cab?.NombreCliente is { Length: > 0 } n ? n : $"pedido {Pedido}";
+
+    // Guía contextual "¿qué hago ahora?" según estado (rediseño M17 de R3).
+    private string TextoGuia() => _cab is null ? "" : _cab.EstadoDoc switch
+    {
+        0 when _lineas.Count == 0 => "Añade productos escaneando su EAN. Cuando el pedido esté completo, pulsa «Enviar pedido».",
+        0 => "Puedes añadir, cambiar o quitar productos. Cuando esté completo, pulsa «Enviar pedido» para que central lo prepare.",
+        1 => "Enviado a central: están pendientes de empezar. Puedes cancelar si el cliente se echa atrás.",
+        2 => "Central lo está preparando. Las líneas van cambiando de estado según avanza.",
+        3 => "En reparto: cuando llegue, marca cada línea como entregada al dársela al cliente.",
+        4 => "Pedido entregado al cliente. No admite cambios.",
+        _ => "Pedido anulado. No admite cambios."
+    };
+
+    private static string FechaHumana(DateTime? f)
+    {
+        if (f is null) return "—";
+        var cultura = new System.Globalization.CultureInfo("es-ES");
+        string dia = cultura.DateTimeFormat.GetDayName(f.Value.DayOfWeek);
+        return $"{char.ToUpper(dia[0])}{dia[1..]} {f:d 'de' MMMM} a las {f:HH:mm}"
+            .Replace("de " + f.Value.ToString("MMMM"), "de " + f.Value.ToString("MMMM", cultura));
+    }
+
+    // ---- Producto (añadir/editar en la misma hoja) ----
+
+    private async Task BuscarProductoAsync()
+    {
+        string codigo = _codigo.Trim();
+        if (_operando || codigo.Length == 0 || !Sesion.Autenticado) return;
+        if (!long.TryParse(codigo, out long ean) || ean <= 0) { MostrarError("Escanea un EAN numérico."); return; }
+
+        _operando = true;
+        _aviso = "";
+        try
+        {
+            var r = await Pedidos.GetProductoPorEanAsync(ean, Sesion.Usuario!.Almacen.CodAlm);
+            if (!r.Ok || r.Datos is null || r.Datos.Prod <= 0)
+            {
+                MostrarError(r.Error.Length > 0 ? r.Error : "El EAN no corresponde a ningún producto.");
+                return;
+            }
+            _prodSel = r.Datos;
+            _cantidad = 1;
+            _obsLinea = "";
+            _editLinea = 0;
+        }
+        finally
+        {
+            _operando = false;
+            StateHasChanged();
+            await JS.InvokeVoidAsync("r5.seleccionar", "cantPedCli");
+        }
+    }
+
+    private void EditarLinea(PedidoClienteLin l)
+    {
+        _editLinea = l.Linea;
+        _prodSel = l;
+        _cantidad = l.Cant;
+        _obsLinea = l.Observaciones;
+        _aviso = "";
+    }
+
+    private void LimpiarProducto()
+    {
+        _prodSel = null;
+        _codigo = "";
+        _editLinea = 0;
+        _obsLinea = "";
+    }
+
+    private async Task ConfirmarProductoAsync()
+    {
+        if (_operando || _prodSel is null || _cantidad <= 0) return;
+        if (_cantidad >= 10000) { MostrarError($"Cantidad {_cantidad} no valida: ¿has escaneado un codigo en el campo de cantidad?"); return; }
+
+        _operando = true;
+        _aviso = "";
+        try
+        {
+            var dto = new PedidoClienteLinDTO { Prod = _prodSel.Prod, Cant = _cantidad, Observaciones = _obsLinea.Trim() };
+            var r = _editLinea > 0
+                ? await Pedidos.PutLineaAsync(Pedido, _editLinea, dto)
+                : await Pedidos.PostLineaAsync(Pedido, dto);
+            if (!r.Ok) { MostrarError(r.Error); return; }
+
+            _tipoAviso = "exito";
+            _aviso = $"{_prodSel.DescProd}: {Cantidad(_cantidad, _prodSel.DecimalesEnCant)} {(_editLinea > 0 ? "actualizado" : "añadido")}.";
+            LimpiarProducto();
+        }
+        finally
+        {
+            _operando = false;
+        }
+        await CargarAsync();
+        await JS.InvokeVoidAsync("r5.seleccionar", "busquedaPedCliProd");
+    }
+
+    private async Task BorrarLineaAsync(PedidoClienteLin l)
+    {
+        if (_operando) return;
+        _operando = true;
+        _lineaBorrando = 0;
+        _aviso = "";
+        try
+        {
+            var r = await Pedidos.DeleteLineaAsync(Pedido, l.Linea);
+            if (!r.Ok) { MostrarError(r.Error); return; }
+            _tipoAviso = "exito";
+            _aviso = $"{l.DescProd}: quitado del pedido.";
+        }
+        finally
+        {
+            _operando = false;
+        }
+        await CargarAsync();
+    }
+
+    // ---- Operativa de línea con pedido en curso (pastillas por estado) ----
+
+    private static IEnumerable<(string Texto, byte Estado, bool Peligro)> AccionesLinea(PedidoClienteLin l)
+    {
+        switch (l.Estado)
+        {
+            case 0: yield return ("Preparar", 1, false); yield return ("No disp.", 4, true); break;
+            case 1: yield return ("A reparto", 2, false); yield return ("No disp.", 4, true); break;
+            case 2: yield return ("Entregar", 3, false); break;
+            case 4: yield return ("Reabrir", 0, false); break;
+        }
+    }
+
+    private async Task CambiarEstadoAsync(PedidoClienteLin l, byte estado)
+    {
+        if (_operando) return;
+        _operando = true;
+        _aviso = "";
+        try
+        {
+            var r = await Pedidos.CambiarEstadoLineaAsync(Pedido, l.Linea, estado);
+            if (!r.Ok) { MostrarError(r.Error); return; }
+        }
+        finally
+        {
+            _operando = false;
+        }
+        await CargarAsync();
+    }
+
+    // ---- Cabecera / documento ----
+
+    private async Task GuardarCabAsync()
+    {
+        if (_operando || _cab is null) return;
+        if (_edNombre.Trim().Length == 0) { MostrarError("Falta el nombre del cliente."); return; }
+        if (!long.TryParse(_edTelefono.Trim(), out long tel) || tel <= 0) { MostrarError("Teléfono no válido."); return; }
+
+        _operando = true;
+        _aviso = "";
+        try
+        {
+            var r = await Pedidos.PutCabAsync(Pedido, new PedidoClienteCabDTO
+            {
+                Telefono = tel,
+                NombreCliente = _edNombre.Trim(),
+                FechaHoraEntrega = _edFecha.Date + _edHora.ToTimeSpan(),
+                Observaciones = _edObs.Trim()
+            });
+            if (!r.Ok) { MostrarError(r.Error); return; }
+            _editandoCab = false;
+            _tipoAviso = "exito";
+            _aviso = "Datos del pedido guardados.";
+        }
+        finally
+        {
+            _operando = false;
+        }
+        await CargarAsync();
+    }
+
+    private async Task EnviarAsync() => await OperarDocAsync(() => Pedidos.EnviarAsync(Pedido), "Pedido enviado a central.");
+    private async Task CancelarAsync() => await OperarDocAsync(() => Pedidos.CancelarAsync(Pedido), "Pedido anulado.");
+    private async Task PrepararTodoAsync() => await OperarDocAsync(() => Pedidos.PrepararTodoAsync(Pedido), "Todas las líneas pendientes pasan a preparación.");
+
+    private async Task OperarDocAsync(Func<Task<ApiRespuesta<int>>> operacion, string exito)
+    {
+        if (_operando) return;
+        _operando = true;
+        _aviso = "";
+        try
+        {
+            var r = await operacion();
+            if (!r.Ok) { MostrarError(r.Error); return; }
+            _tipoAviso = "exito";
+            _aviso = exito;
+        }
+        finally
+        {
+            _operando = false;
+        }
+        await CargarAsync();
+    }
+
+    private void MostrarError(string mensaje)
+    {
+        _tipoAviso = "error";
+        _aviso = mensaje;
+    }
+
+    private void Volver() => Nav.NavigateTo("/pedidoCliente");
+}

@@ -1,0 +1,271 @@
+@* Pedido de Cliente a Central (módulo 17): un mostrador toma nota del pedido de un
+   cliente y un central lo prepara. Dos perspectivas SIEMPRE disponibles (el estado
+   habilita, no el tipo de almacén): "Pedidos" (mostrador: listado con buscador por
+   cliente/teléfono/nº) y "Preparar" (bandeja del preparador a nivel de línea, con
+   ámbito A-preparar/Mis-pedidos y atrasados en rojo). *@
+@page "/pedidoCliente"
+@inject PedidoClienteService Pedidos
+@inject SesionUsuario Sesion
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<GuardiaModulo CodMenu="17">
+<div class="r5-columna">
+
+    <div class="r5-fila" style="flex-wrap: wrap;">
+        <div class="r5-segmento">
+            <button class="@(!_verBandeja ? "activo" : "")" @onclick="() => CambiarVistaAsync(false)" disabled="@_cargando">Pedidos</button>
+            <button class="@(_verBandeja ? "activo" : "")" @onclick="() => CambiarVistaAsync(true)" disabled="@_cargando">Preparar @(_atrasadas > 0 ? $"⚠{_atrasadas}" : "")</button>
+        </div>
+        <button class="r5-btn r5-btn--fantasma" @onclick="CargarAsync" disabled="@_cargando">Actualizar</button>
+        @if (!_verBandeja)
+        {
+            <button class="r5-btn r5-btn--primario" style="margin-left:auto"
+                    @onclick='() => Nav.NavigateTo("/pedidoCliente/alta")'>
+                + Nuevo pedido
+            </button>
+        }
+    </div>
+
+    @if (!_verBandeja)
+    {
+        <div class="r5-tarjeta r5-fila" style="flex-wrap: wrap; align-items: flex-end;">
+            <div class="r5-segmento">
+                <button class="@(_estadoFiltro == -1 ? "activo" : "")" @onclick="() => FiltrarEstadoAsync(-1)" disabled="@_cargando">Todos</button>
+                <button class="@(_estadoFiltro == 0 ? "activo" : "")" @onclick="() => FiltrarEstadoAsync(0)" disabled="@_cargando">Abiertos</button>
+                <button class="@(_estadoFiltro == 100 ? "activo" : "")" @onclick="() => FiltrarEstadoAsync(100)" disabled="@_cargando">En curso</button>
+                <button class="@(_estadoFiltro == 4 ? "activo" : "")" @onclick="() => FiltrarEstadoAsync(4)" disabled="@_cargando">Entregados</button>
+            </div>
+            <form class="r5-buscador" style="flex:1; min-width: 260px;" @onsubmit="BuscarAsync">
+                <input id="busquedaPedCli" class="r5-input" type="text"
+                       placeholder="Cliente, teléfono o nº de pedido"
+                       @bind="_busqueda" @bind:event="oninput" disabled="@_cargando" />
+                <button type="submit" class="r5-btn r5-btn--secundario" disabled="@_cargando">Buscar</button>
+            </form>
+        </div>
+
+        <Aviso Mensaje="@_error" OnReintentar="CargarAsync" Reintentando="_cargando" />
+
+        @if (_cargando)
+        {
+            <Cargando Texto="Cargando pedidos…" />
+        }
+        else if (_pedidos.Count == 0 && _error.Length == 0)
+        {
+            <div class="r5-cargando">
+                <Icono Nombre="pedido-central" Clase="r5-modulo__icono" />
+                <span>No hay pedidos de cliente con este filtro.</span>
+                <button class="r5-btn r5-btn--primario" @onclick='() => Nav.NavigateTo("/pedidoCliente/alta")'>+ Nuevo pedido</button>
+            </div>
+        }
+        else
+        {
+            <ListaPaginada Items="_pedidos" Context="p">
+                <Fila>
+                    <button @key="p.Pedido" class="r5-doc" @onclick="() => Abrir(p.Pedido)">
+                        <Icono Nombre="usuario" Clase="r5-modulo__icono" />
+                        <span class="r5-doc__principal">
+                            <span class="r5-doc__titulo">@(p.NombreCliente.Length > 0 ? p.NombreCliente : $"Pedido {p.Pedido}")</span>
+                            <span class="r5-doc__detalle">
+                                Nº @p.Pedido · @FormatearTel(p.Telefono)
+                                @(p.FechaHoraEntrega is null ? "" : $" · entrega {p.FechaHoraEntrega:dd/MM HH:mm}")
+                            </span>
+                        </span>
+                        <span class="r5-doc__derecha">
+                            <span class="r5-badge @(p.Abierto ? "r5-badge--abierto" : p.Vivo ? "r5-badge--neutro" : "r5-badge--cerrado")">
+                                @p.DescEstado
+                            </span>
+                        </span>
+                    </button>
+                </Fila>
+            </ListaPaginada>
+        }
+    }
+    else
+    {
+        <div class="r5-tarjeta r5-fila" style="flex-wrap: wrap;">
+            <div class="r5-segmento">
+                <button class="@(_ambito == 0 ? "activo" : "")" @onclick="() => CambiarAmbitoAsync(0)" disabled="@_cargando">A preparar</button>
+                <button class="@(_ambito == 1 ? "activo" : "")" @onclick="() => CambiarAmbitoAsync(1)" disabled="@_cargando">Mis pedidos</button>
+            </div>
+            <span class="r5-texto-suave r5-texto-sm">
+                @(_ambito == 0 ? "Líneas que este almacén debe preparar." : "Líneas de los pedidos que tomó este almacén.")
+                Ordenadas por fecha de entrega.
+            </span>
+        </div>
+
+        <Aviso Mensaje="@_error" OnReintentar="CargarAsync" Reintentando="_cargando" />
+
+        @if (_cargando)
+        {
+            <Cargando Texto="Cargando bandeja…" />
+        }
+        else if (_lineas.Count == 0 && _error.Length == 0)
+        {
+            <div class="r5-cargando">
+                <Icono Nombre="ok" Clase="r5-modulo__icono" />
+                <span>Nada pendiente de preparar. Buen trabajo.</span>
+            </div>
+        }
+        else
+        {
+            <div class="r5-tarjeta r5-tabla-scroll">
+                <table class="r5-tabla">
+                    <thead><tr><th>Entrega</th><th>Producto</th><th class="num">Cant.</th><th>Cliente</th><th>Pedido</th><th>Estado</th><th></th></tr></thead>
+                    <tbody>
+                        @foreach (var l in _lineas)
+                        {
+                            <tr @key="@($"{l.Pedido}-{l.Linea}")">
+                                <td style="@(l.Atrasada ? "color: var(--c-error); font-weight: 600;" : "")">
+                                    @l.FechaHoraEntrega?.ToString("dd/MM HH:mm")@(l.Atrasada ? " · ATRASADO" : "")
+                                </td>
+                                <td>@l.DescProd</td>
+                                <td class="num">@Cantidad(l.Cant, l.DecimalesEnCant)</td>
+                                <td>@l.NombreCliente</td>
+                                <td><button class="r5-btn r5-btn--fantasma r5-btn--sm" @onclick="() => Abrir(l.Pedido)">@l.Pedido</button></td>
+                                <td><span class="r5-badge r5-badge--neutro">@l.DescEstado</span></td>
+                                <td class="num">
+                                    @foreach (var (texto, estado, peligro) in AccionesLinea(l))
+                                    {
+                                        <button class="r5-btn r5-btn--sm @(peligro ? "r5-btn--peligro" : "r5-btn--secundario")"
+                                                disabled="@_operando" @onclick="() => OperarAsync(l, estado)">
+                                            @texto
+                                        </button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    }
+</div>
+</GuardiaModulo>
+
+@code {
+    private bool _verBandeja;
+    private bool _cargando = true;
+    private bool _operando;
+    private string _error = "";
+    private int _estadoFiltro = -1;   // -1 todos; 100 = "en curso" (1..3, filtrado en cliente)
+    private string _busqueda = "";
+    private int _ambito;              // 0 A preparar, 1 Mis pedidos
+    private int _atrasadas;
+
+    private List<PedidoClienteCab> _pedidos = new();
+    private List<PedidoClienteLin> _lineas = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        // El tipo de almacén solo decide la pantalla inicial (como R3): almacén → bandeja.
+        _verBandeja = Sesion.Usuario?.Almacen.Tipo != 0;
+        await CargarAsync();
+    }
+
+    private Task CambiarVistaAsync(bool bandeja)
+    {
+        if (_verBandeja == bandeja) return Task.CompletedTask;
+        _verBandeja = bandeja;
+        return CargarAsync();
+    }
+
+    private Task FiltrarEstadoAsync(int estado)
+    {
+        _estadoFiltro = estado;
+        return CargarAsync();
+    }
+
+    private Task CambiarAmbitoAsync(int ambito)
+    {
+        if (_ambito == ambito) return Task.CompletedTask;
+        _ambito = ambito;
+        return CargarAsync();
+    }
+
+    private Task BuscarAsync() => CargarAsync();
+
+    private async Task CargarAsync()
+    {
+        if (!Sesion.Autenticado) return;
+        _cargando = true;
+        _error = "";
+        try
+        {
+            short alm = Sesion.Usuario!.Almacen.CodAlm;
+            if (_verBandeja)
+            {
+                // Lo atrasado siempre visible: sin fecha de inicio y hasta +7 días (como R3).
+                var r = await Pedidos.GetBandejaAsync(alm, _ambito, null, DateTime.Today.AddDays(7));
+                if (!r.Ok) { _error = r.Error; _lineas = new(); return; }
+                _lineas = (r.Datos ?? new())
+                    .OrderBy(l => l.FechaHoraEntrega ?? DateTime.MaxValue)
+                    .ThenBy(l => l.DescProd).ToList();
+                _atrasadas = _lineas.Count(l => l.Atrasada);
+            }
+            else
+            {
+                string b = _busqueda.Trim();
+                string cliente = "";
+                long telefono = 0;
+                // Nº de pedido tecleado → ir directo a la ficha (el "ir a pedido" de R3).
+                if (b.Length is > 0 and < 8 && int.TryParse(b, out int num) && num > 0)
+                {
+                    var cab = await Pedidos.GetCabAsync(num);
+                    if (cab.Ok && cab.Datos is { Pedido: > 0 }) { Abrir(num); return; }
+                }
+                if (b.Length >= 8 && long.TryParse(b, out long tel)) telefono = tel;
+                else cliente = b;
+
+                var r = await Pedidos.GetListaAsync(alm, _estadoFiltro is -1 or 100 ? -1 : _estadoFiltro,
+                    cliente, telefono);
+                if (!r.Ok) { _error = r.Error; _pedidos = new(); return; }
+                _pedidos = r.Datos ?? new();
+                if (_estadoFiltro == 100)
+                    _pedidos = _pedidos.Where(p => p.EstadoDoc is >= 1 and <= 3).ToList();
+
+                // Contador de avisos del preparador para la pestaña (como el menú de R3).
+                var bandeja = await Pedidos.GetBandejaAsync(alm, 0, null, DateTime.Today.AddDays(7));
+                if (bandeja.Ok) _atrasadas = (bandeja.Datos ?? new()).Count(l => l.Atrasada);
+            }
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    // Acciones por estado de línea (pastillas de R3): el estado habilita, nada más.
+    private static IEnumerable<(string Texto, byte Estado, bool Peligro)> AccionesLinea(PedidoClienteLin l)
+    {
+        switch (l.Estado)
+        {
+            case 0: yield return ("Preparar", 1, false); yield return ("No disp.", 4, true); break;
+            case 1: yield return ("A reparto", 2, false); yield return ("No disp.", 4, true); break;
+            case 2: yield return ("Entregar", 3, false); break;
+            case 4: yield return ("Reabrir", 0, false); break;
+        }
+    }
+
+    private async Task OperarAsync(PedidoClienteLin l, byte estado)
+    {
+        if (_operando) return;
+        _operando = true;
+        _error = "";
+        try
+        {
+            var r = await Pedidos.CambiarEstadoLineaAsync(l.Pedido, l.Linea, estado);
+            if (!r.Ok) { _error = r.Error; return; }
+        }
+        finally
+        {
+            _operando = false;
+        }
+        await CargarAsync();
+    }
+
+    private void Abrir(int pedido) => Nav.NavigateTo($"/pedidoCliente/{pedido}");
+
+    private static string FormatearTel(long tel)
+        => tel <= 0 ? "sin teléfono" : System.Text.RegularExpressions.Regex.Replace(tel.ToString(), @"(\d{3})(?=\d)", "$1 ");
+}

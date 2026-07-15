@@ -26,6 +26,7 @@ public static class CatalogoModulos
         [19] = new(19, "Pedido central", "/pedidoCentral", "pedido-central", true, "blue", 20),
         [8] = new(8, "Pedido proveedor", "/pedidoCompra", "pedido-compra", true, "blue", 21),
         [24] = new(24, "Preparación", "/preparacion", "preparacion", true, "blue", 22),
+        [17] = new(17, "Pedido cliente", "/pedidoCliente", "usuario", true, "blue", 23),
         // Etiquetado (ámbar)
         [12] = new(12, "Etiquetas", "/etiquetas", "etiquetas", true, "amber", 30),
         [27] = new(27, "Pesar y etiquetar", "/envasado", "balanza", true, "amber", 31),

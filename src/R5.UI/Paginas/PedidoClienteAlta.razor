@@ -1,0 +1,138 @@
+@* Alta de pedido de cliente en UNA sola hoja (rediseño M17 de R3, sin popups):
+   nombre, teléfono, almacén central que sirve, fecha/hora de entrega y
+   observaciones, con validación en línea. Al crear, se abre la ficha para
+   añadir productos. *@
+@page "/pedidoCliente/alta"
+@inject PedidoClienteService Pedidos
+@inject AlmacenService Almacenes
+@inject SesionUsuario Sesion
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<GuardiaModulo CodMenu="17">
+<div class="r5-columna">
+
+    <div class="r5-fila">
+        <button class="r5-btn r5-btn--secundario" @onclick='() => Nav.NavigateTo("/pedidoCliente")'>← Pedidos</button>
+        <h2>Nuevo pedido de cliente</h2>
+    </div>
+
+    <form class="r5-tarjeta r5-columna r5-ancho-form" @onsubmit="CrearAsync">
+        <div class="r5-campo">
+            <label for="altaNombre">Nombre del cliente</label>
+            <input id="altaNombre" class="r5-input" type="text" maxlength="50" autofocus
+                   @bind="_nombre" disabled="@_creando" />
+        </div>
+        <div class="r5-campo">
+            <label for="altaTel">Teléfono</label>
+            <input id="altaTel" class="r5-input r5-input--numero" type="text" inputmode="numeric" maxlength="15"
+                   @bind="_telefono" disabled="@_creando" />
+        </div>
+        <div class="r5-campo">
+            <label for="altaAlm">Almacén central que lo prepara</label>
+            <div class="r5-fila">
+                <input id="altaAlm" class="r5-input r5-input--numero" type="text" inputmode="numeric"
+                       style="max-width: 120px;" @bind="_almCentralTexto" @bind:event="oninput" disabled="@_creando" />
+                <button type="button" class="r5-btn r5-btn--secundario" @onclick="ValidarAlmAsync" disabled="@_creando">Comprobar</button>
+                <span class="r5-texto-suave">@_nombreAlmCentral</span>
+            </div>
+        </div>
+        <div class="r5-fila">
+            <div class="r5-campo" style="flex:1">
+                <label for="altaFecha">Fecha de entrega</label>
+                <input id="altaFecha" class="r5-input" type="date" @bind="_fechaEntrega" disabled="@_creando" />
+            </div>
+            <div class="r5-campo" style="flex:1">
+                <label for="altaHora">Hora</label>
+                <input id="altaHora" class="r5-input" type="time" @bind="_horaEntrega" disabled="@_creando" />
+            </div>
+        </div>
+        <div class="r5-campo">
+            <label for="altaObs">Observaciones (opcional)</label>
+            <input id="altaObs" class="r5-input" type="text" maxlength="100" @bind="_observaciones" disabled="@_creando" />
+        </div>
+
+        <Aviso Mensaje="@_error" />
+
+        <button type="submit" class="r5-btn r5-btn--primario r5-btn--bloque"
+                disabled="@(_creando || _nombre.Trim().Length == 0 || _telefono.Trim().Length == 0)">
+            @(_creando ? "Creando…" : "Crear pedido y añadir productos")
+        </button>
+    </form>
+</div>
+</GuardiaModulo>
+
+@code {
+    private string _nombre = "";
+    private string _telefono = "";
+    private string _almCentralTexto = "";
+    private string _nombreAlmCentral = "";
+    private DateTime _fechaEntrega = DateTime.Today.AddDays(1);
+    private TimeOnly _horaEntrega = new(12, 0);
+    private string _observaciones = "";
+    private bool _creando;
+    private string _error = "";
+
+    protected override void OnInitialized()
+    {
+        // Central por defecto: el que el almacén usa para emitir pedidos, si lo tiene.
+        byte central = Sesion.Usuario?.Almacen.CentroDistEmitirPedidos ?? 0;
+        if (central > 0) _almCentralTexto = central.ToString();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender) await JS.InvokeVoidAsync("r5.seleccionar", "altaNombre");
+    }
+
+    // Muestra el nombre del almacén central tecleado (el 'ActualizarNombreAlmAlta' de R3).
+    private async Task ValidarAlmAsync()
+    {
+        _nombreAlmCentral = "";
+        if (!short.TryParse(_almCentralTexto.Trim(), out short alm) || alm <= 0) return;
+        var r = await Almacenes.GetAsync(alm);
+        _nombreAlmCentral = r.Ok && r.Datos is { CodAlm: > 0 } ? r.Datos.DescAlm : "(no existe)";
+    }
+
+    private async Task CrearAsync()
+    {
+        if (_creando || !Sesion.Autenticado) return;
+        _error = "";
+
+        if (_nombre.Trim().Length == 0) { _error = "Falta el nombre del cliente."; return; }
+        if (!long.TryParse(_telefono.Trim(), out long tel) || tel <= 0) { _error = "Teléfono no válido (solo números)."; return; }
+        if (!short.TryParse(_almCentralTexto.Trim(), out short almCentral) || almCentral <= 0)
+        { _error = "Falta el almacén central que preparará el pedido."; return; }
+        DateTime entrega = _fechaEntrega.Date + _horaEntrega.ToTimeSpan();
+        if (entrega <= DateTime.Now) { _error = "La entrega debe ser posterior a ahora."; return; }
+
+        _creando = true;
+        try
+        {
+            // El almacén central debe existir (la guarda VerificarAlmCentral de R3).
+            var alm = await Almacenes.GetAsync(almCentral);
+            if (!alm.Ok || alm.Datos is null || alm.Datos.CodAlm <= 0)
+            { _error = $"El almacén {almCentral} no existe."; return; }
+            if (almCentral == Sesion.Usuario!.Almacen.CodAlm)
+            { _error = "El central no puede ser el propio almacén."; return; }
+
+            var r = await Pedidos.PostCabAsync(new PedidoClienteCabDTO
+            {
+                Empleado = Sesion.Usuario.CodUsuario,
+                Alm = Sesion.Usuario.Almacen.CodAlm,
+                AlmCentral = almCentral,
+                Telefono = tel,
+                NombreCliente = _nombre.Trim(),
+                FechaHoraEntrega = entrega,
+                Observaciones = _observaciones.Trim()
+            });
+            if (!r.Ok || r.Datos <= 0) { _error = r.Error.Length > 0 ? r.Error : "No se pudo crear el pedido."; return; }
+
+            Nav.NavigateTo($"/pedidoCliente/{r.Datos}");
+        }
+        finally
+        {
+            _creando = false;
+        }
+    }
+}

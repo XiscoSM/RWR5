@@ -82,6 +82,12 @@ public sealed class ApiWeb
             Content = JsonContent.Create(cuerpo, options: _jsonOptions)
         }, ct);
 
+    public Task<ApiRespuesta<T>> PutAsync<T>(string rutaRelativa, object? cuerpo, CancellationToken ct = default)
+        => EnviarAsync<T>(() => new HttpRequestMessage(HttpMethod.Put, Url(rutaRelativa))
+        {
+            Content = JsonContent.Create(cuerpo, options: _jsonOptions)
+        }, ct);
+
     public Task<ApiRespuesta> DeleteAsync(string rutaRelativa, CancellationToken ct = default)
         => EnviarSinCuerpoAsync(() => new HttpRequestMessage(HttpMethod.Delete, Url(rutaRelativa)), ct);
 
