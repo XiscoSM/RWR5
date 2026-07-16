@@ -10,6 +10,7 @@
 @inject ComentarioService Comentarios
 @inject ProveedorService Proveedores
 @inject PedidoCompraService Pedidos
+@inject DispositivoService Dispositivo
 @inject SesionUsuario Sesion
 @inject NavigationManager Nav
 @inject IJSRuntime JS
@@ -62,16 +63,21 @@
                 </div>
             }
 
-            <div class="r5-campo">
-                <label for="linkDoc">Link del documento</label>
-                <input id="linkDoc" class="r5-input r5-input--numero" type="text" inputmode="numeric" maxlength="13"
-                       placeholder="Escanea la etiqueta pegada al albarán en papel"
-                       @bind="_linkTexto" @bind:event="oninput" autofocus disabled="@_registrando" />
-            </div>
+            @* Link del documento según la configuración de la empresa (tri-estado R3):
+               0 = no se pide, 1 = opcional (vacío o «0» registra sin link), 2 = obligatorio. *@
+            @if (_nivelLink > 0)
+            {
+                <div class="r5-campo">
+                    <label for="linkDoc">Link del documento @(_nivelLink == 1 ? "(opcional)" : "")</label>
+                    <input id="linkDoc" class="r5-input r5-input--numero" type="text" inputmode="numeric" maxlength="13"
+                           placeholder="Escanea la etiqueta pegada al albarán en papel"
+                           @bind="_linkTexto" @bind:event="oninput" autofocus disabled="@_registrando" />
+                </div>
+            }
             <Aviso Tipo="@_tipoAviso" Mensaje="@_aviso" />
             <div class="r5-fila">
                 <button type="submit" class="r5-btn r5-btn--primario"
-                        disabled="@(_registrando || !long.TryParse(_linkTexto, out _) || FaltanControles)">
+                        disabled="@(_registrando || !LinkValido || FaltanControles)">
                     @(_registrando ? "Registrando…" : (_descuadreAvisado ? "Registrar igualmente" : "Confirmar registro"))
                 </button>
                 <button type="button" class="r5-btn r5-btn--fantasma" @onclick="CancelarRegistro">Cancelar</button>
@@ -121,9 +127,11 @@
                 {
                     <button class="r5-btn r5-btn--fantasma" @onclick="CambiarProveedor">Cambiar</button>
                 }
+                @* Tope de 12 caracteres como R3: evita que una lectura de EAN del escáner
+                   caiga en este campo y acabe como nº de albarán del proveedor. *@
                 <div class="r5-campo" style="margin-left:auto; min-width: 220px;">
                     <label for="numAlbProv">Nº albarán del proveedor</label>
-                    <input id="numAlbProv" class="r5-input" type="text" maxlength="20"
+                    <input id="numAlbProv" class="r5-input" type="text" maxlength="12"
                            @bind="_numAlbProv" @bind:event="oninput" disabled="@(_numAlbaran > 0)" />
                 </div>
             </div>
@@ -214,7 +222,48 @@
                         disabled="@(_ocupado || string.IsNullOrWhiteSpace(_codigo) || string.IsNullOrWhiteSpace(_numAlbProv))">
                     Buscar
                 </button>
+                <button type="button" class="r5-btn r5-btn--fantasma" @onclick="AlternarProdsGamaAsync"
+                        disabled="@(_ocupado || string.IsNullOrWhiteSpace(_numAlbProv))">
+                    @(_verProdsGama ? "Ocultar productos" : "Ver productos")
+                </button>
             </form>
+
+            @* Panel de productos de la gama/pedido (modo NoIntroEanCompra y consulta de R3):
+               permite elegir el producto tocándolo, sin escanear. Se abre solo si el almacén
+               o la gama lo exigen; también a demanda con el botón. *@
+            @if (_verProdsGama)
+            {
+                <div class="r5-tarjeta r5-columna">
+                    <div class="r5-fila">
+                        <h3 style="margin:0">Productos de la condición de compra</h3>
+                        <input class="r5-input" style="max-width: 240px; margin-left:auto;" type="text"
+                               placeholder="Filtrar por descripción" @bind="_filtroProds" @bind:event="oninput" />
+                    </div>
+                    @if (_prodsGama.Count == 0)
+                    {
+                        <p class="r5-texto-suave">Sin productos para esta gama.</p>
+                    }
+                    else
+                    {
+                        <div class="r5-tabla-scroll" style="max-height: 320px; overflow-y: auto;">
+                            <table class="r5-tabla">
+                                <thead><tr><th>Cód.</th><th>Producto</th><th class="num">Pedida</th><th class="num">Recibida</th></tr></thead>
+                                <tbody>
+                                    @foreach (var p in ProdsGamaFiltrados)
+                                    {
+                                        <tr @key="p.Prod.CodProd" style="cursor: pointer;" @onclick="() => ElegirProdGamaAsync(p)">
+                                            <td>@p.Prod.CodProd</td>
+                                            <td>@p.Prod.DescProd</td>
+                                            <td class="num">@(p.CantPedida != 0 ? Cantidad(p.CantPedida, p.Prod.DecimalesEnCant) : "")</td>
+                                            <td class="num">@(p.CantRecibida != 0 ? Cantidad(p.CantRecibida, p.Prod.DecimalesEnCant) : "")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            }
             @if (string.IsNullOrWhiteSpace(_numAlbProv))
             {
                 <span class="r5-texto-suave r5-texto-sm">Introduce el nº de albarán del proveedor antes de escanear.</span>
@@ -222,6 +271,14 @@
         </div>
 
         <Aviso Tipo="@_tipoAviso" Mensaje="@_aviso" />
+
+        @if (_albaranRegPendiente is not null)
+        {
+            <div class="r5-fila">
+                <button class="r5-btn r5-btn--peligro" @onclick="ModificarRegistradoAsync">Modificar la compra registrada</button>
+                <button class="r5-btn r5-btn--fantasma" @onclick="Volver">Volver</button>
+            </div>
+        }
 
         @if (_ocupado)
         {
@@ -281,10 +338,17 @@
                             <div class="r5-campo" style="flex:1; min-width: 200px;">
                                 <label for="loteProvRec">Lote del proveedor</label>
                                 <input id="loteProvRec" class="r5-input" type="text" maxlength="20"
-                                       @bind="_loteProv" disabled="@_anadiendo" />
+                                       @bind="_loteProv" @bind:after="BuscarLoteAsync" disabled="@_anadiendo" />
                             </div>
                         }
                     </div>
+                }
+
+                @* Lote ya recibido en este albarán (SelectLoteBD de R3): se recupera su
+                   trazabilidad y la cantidad tecleada pasa a ser el TOTAL del lote. *@
+                @if (_lineaLote > 0)
+                {
+                    <Aviso Tipo="aviso" Mensaje="@($"El lote «{_loteProv}» ya tiene {Cantidad(_cantAntLote, _linea.Prod.DecimalesEnCant)} recibido en este albarán. La cantidad que introduzcas será el TOTAL del lote (reemplaza la línea {_lineaLote}).")" />
                 }
 
                 @* Datos legales de trazabilidad cárnica según el perfil de compra del
@@ -498,6 +562,28 @@
     // exactamente donde estaba (proveedor/gama fijados, escáner listo).
     protected override async Task OnInitializedAsync()
     {
+        // Nivel de exigencia del link del documento (ConfEmpresa, vía ApiInfo). Si la
+        // llamada falla se mantiene el nivel 2 (obligatorio), el comportamiento seguro.
+        var info = await Dispositivo.ProbarApiAsync();
+        if (info.Ok && info.Datos is not null) _nivelLink = info.Datos.NivelLink;
+
+        await CargarAlbaranRutaAsync();
+    }
+
+    private bool _modificarRegistradoAceptado;
+    private Albaran? _albaranRegPendiente;
+
+    // El operario confirmó modificar una compra ya registrada (Bcontinuar de R3).
+    private async Task ModificarRegistradoAsync()
+    {
+        _modificarRegistradoAceptado = true;
+        _albaranRegPendiente = null;
+        _aviso = "";
+        await CargarAlbaranRutaAsync();
+    }
+
+    private async Task CargarAlbaranRutaAsync()
+    {
         if (NumRuta <= 0 || string.IsNullOrEmpty(FechaRuta)
             || !DateTime.TryParse(FechaRuta, out DateTime fecha)) return;
 
@@ -510,9 +596,13 @@
                 MostrarError($"No se pudo cargar el albarán {NumRuta}: {cab.Error}");
                 return;
             }
-            if (cab.Datos.Reg)
+            if (cab.Datos.Reg && !_modificarRegistradoAceptado)
             {
-                MostrarError($"El albarán {NumRuta} ya está registrado: no admite más líneas.");
+                // R3 permite modificar una compra registrada tras confirmar (Bcontinuar):
+                // se avisa y se exige un toque explícito antes de cargarla.
+                _albaranRegPendiente = cab.Datos;
+                _tipoAviso = "aviso";
+                _aviso = $"El albarán {NumRuta} YA ESTÁ REGISTRADO. ¿Seguro que quieres modificar una compra registrada?";
                 return;
             }
 
@@ -651,6 +741,17 @@
         _gamaElegida = gama;
         _aviso = "";
         _enfocarAlbaran = true; // el siguiente paso es teclear el nº de albarán del proveedor
+        // Modo sin EAN (NoIntroEanCompra del almacén o del proveedor, R3): el panel de
+        // productos se abre solo y el operario elige tocando.
+        if (Sesion.Usuario!.Almacen.NoIntroEanCompra || gama.Gama.NoIntroEanCompra)
+            _ = AbrirPanelProdsAsync();
+    }
+
+    private async Task AbrirPanelProdsAsync()
+    {
+        await CargarProdsGamaAsync();
+        _verProdsGama = true;
+        StateHasChanged();
     }
 
     private void CambiarProveedor()
@@ -784,8 +885,10 @@
             {
                 // Teclear el código exige permiso: producto en consultas o código de
                 // proveedor en compras (RW_CodProdEnConsultas / RW_CodProvEnCompras de R3).
-                if (!Sesion.Usuario.CodProdEnConsultas && !Sesion.Usuario.CodProvEnCompras)
+                // Elegir del panel de la gama no lo exige (equivale al grid de R3).
+                if (!_desdePanel && !Sesion.Usuario.CodProdEnConsultas && !Sesion.Usuario.CodProvEnCompras)
                 { MostrarError("Escanea el código de barras: no tienes permiso para buscar por código."); return; }
+                _desdePanel = false;
                 respuesta = await Albaranes.GetLineaPorProdAsync(_numAlbaran, _fecha, codProd, codAlm,
                     _gamaElegida.CodProv, _gamaElegida.Gama.CodGama, _numPedidoContra);
             }
@@ -859,8 +962,82 @@
         }
     }
 
+    // ---- Panel de productos de la gama (NoIntroEanCompra + consulta, R3) ----
+    private bool _desdePanel;
+    private bool _verProdsGama;
+    private List<AlbaranLin> _prodsGama = new();
+    private string _filtroProds = "";
+
+    private IEnumerable<AlbaranLin> ProdsGamaFiltrados => _filtroProds.Trim().Length == 0
+        ? _prodsGama
+        : _prodsGama.Where(p => p.Prod.DescProd.Contains(_filtroProds.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    private async Task AlternarProdsGamaAsync()
+    {
+        if (_verProdsGama) { _verProdsGama = false; return; }
+        await CargarProdsGamaAsync();
+        _verProdsGama = true;
+    }
+
+    private async Task CargarProdsGamaAsync()
+    {
+        if (_gamaElegida is null || !Sesion.Autenticado) return;
+        var r = await Albaranes.GetProdsPorGamaAsync(_numAlbaran, _fecha,
+            _gamaElegida.Gama.CodGama, Sesion.Usuario!.Almacen.CodAlm);
+        _prodsGama = r.Datos ?? new();
+        if (!r.Ok) MostrarError(r.Error);
+    }
+
+    // Producto elegido del panel: mismo flujo que teclear su código (sin exigir el
+    // permiso de teclear, como el grid de R3).
+    private async Task ElegirProdGamaAsync(AlbaranLin p)
+    {
+        _codigo = p.Prod.CodProd.ToString();
+        _verProdsGama = false;
+        _desdePanel = true;
+        await BuscarProductoAsync();
+    }
+
     // ---- Trazabilidad cárnica (perfil Compra_* de R3) ----
     private DatosTrazabilidad _traza = new();
+    // Lote ya recibido en el albarán: línea a reemplazar y cantidad acumulada (CantAnt de R3).
+    private int _lineaLote;
+    private decimal _cantAntLote;
+    private bool _totalLoteAceptado;
+    private bool _cantGrandeAceptada;
+
+    // Lote tecleado: si ya existe en el albarán se recupera su trazabilidad previa y se
+    // avisa de la cantidad acumulada (SelectLoteBD de R3, 9_Compras.vb:3353-3387).
+    private async Task BuscarLoteAsync()
+    {
+        _lineaLote = 0;
+        _cantAntLote = 0;
+        _totalLoteAceptado = false;
+        string lote = _loteProv.Trim().ToUpperInvariant();
+        _loteProv = lote;
+        if (_linea is null || lote.Length == 0 || _numAlbaran <= 0) return;
+
+        var r = await Albaranes.GetLineaPorLoteAsync(_numAlbaran, _fecha, _linea.Prod.CodProd, lote);
+        if (!r.Ok || r.Datos is null || r.Datos.Linea <= 0) return;
+
+        var previo = r.Datos;
+        _lineaLote = previo.Linea;
+        _cantAntLote = previo.Cant;
+        // Se precarga la trazabilidad previa del lote; el operario puede corregirla.
+        _traza.Canal = previo.DatosCanal;
+        if (previo.DatosCategoria.Length > 0) _traza.Categoria = previo.DatosCategoria;
+        if (previo.DatosCrotal.Length > 0) _traza.Crotal = previo.DatosCrotal;
+        _traza.EstibaOk = previo.DatosEstibaOk;
+        _traza.TempOk = previo.DatosTempOk;
+        if (previo.DatosFechaCad is not null) _fechaCaducidad = previo.DatosFechaCad;
+        if (previo.DatosFechaNac is not null) _traza.FechaNac = previo.DatosFechaNac;
+        if (previo.DatosFechaSac is not null) _traza.FechaSac = previo.DatosFechaSac;
+        if (previo.DatosPaisNac.Length > 0) _traza.PaisNac = previo.DatosPaisNac;
+        if (previo.DatosPaisEng.Length > 0) _traza.PaisEng = previo.DatosPaisEng;
+        if (previo.DatosPaisSac.Length > 0) _traza.PaisSac = previo.DatosPaisSac;
+        if (previo.DatosRegSanitarioSac.Length > 0) _traza.RegSanitarioSac = previo.DatosRegSanitarioSac;
+        StateHasChanged();
+    }
 
     private bool PideFechaCad => _linea is not null && (_linea.Prod.DiasCaducidad > 0 || _linea.CompraFechaCad > 0);
     private bool PideLote => _linea is not null && (_linea.Prod.ControlaLotes || _linea.CompraLoteProv);
@@ -1004,12 +1181,34 @@
     {
         if (_anadiendo || _linea is null || _gamaElegida is null || _cantidad == 0) return;
 
-        // Tope de sanidad: una lectura del escaner caida en el campo cantidad (>=10.000)
-        // no puede acabar grabada como unidades.
-        if (Math.Abs(_cantidad) >= 10000) { MostrarError($"Cantidad {_cantidad} no valida: ¿has escaneado un codigo en el campo de cantidad?"); return; }
+        // Tope duro de R3 (999.999) y aviso de sanidad a partir de 10.000: una lectura
+        // del escáner caída en el campo cantidad no debe acabar grabada, pero una
+        // recepción legítima grande sí puede confirmarse en un segundo toque.
+        if (Math.Abs(_cantidad) >= 999999) { MostrarError($"Cantidad {_cantidad} superior al máximo (999.999)."); return; }
+        if (Math.Abs(_cantidad) >= 10000 && !_cantGrandeAceptada)
+        {
+            _cantGrandeAceptada = true;
+            _tipoAviso = "aviso";
+            _aviso = $"Cantidad {Cantidad(_cantidad, _linea.Prod.DecimalesEnCant)}: ¿seguro que no es una lectura del escáner? Pulsa «Añadir» de nuevo para confirmar.";
+            return;
+        }
+
+        // Sin cargo exige una anotación de línea, como R3 (Bsincargo → FormInputBoxCombo).
+        if (_sinCargo && _comentarioLinea.Length == 0)
+        { MostrarError("Mercancía sin cargo: elige una anotación de línea (comentario) antes de añadir."); return; }
 
         // --- Trazabilidad cárnica según el perfil de compra (crotal, países, sanitarios…) ---
         if (ValidarTrazabilidad() is { } errorTraza) { MostrarError(errorTraza); return; }
+
+        // --- Lote ya recibido: la cantidad es el TOTAL del lote; confirmación en dos toques
+        // ("¿Cantidad Total Correcta?" de R3). ---
+        if (_lineaLote > 0 && !_totalLoteAceptado)
+        {
+            _totalLoteAceptado = true;
+            _tipoAviso = "aviso";
+            _aviso = $"El lote ya tenía {Cantidad(_cantAntLote, _linea.Prod.DecimalesEnCant)}. ¿Cantidad TOTAL correcta: {Cantidad(_cantidad, _linea.Prod.DecimalesEnCant)}? Pulsa «Añadir» de nuevo para confirmar.";
+            return;
+        }
 
         // --- Fecha de caducidad (productos que la controlan) ---
         if (PideFechaCad && _fechaCaducidad is null)
@@ -1086,7 +1285,9 @@
                 // (DatosToJson); si no, passthrough del Get como hasta ahora.
                 FechaCaducidad = _fechaCaducidad,
                 NumLoteProv = _loteProv.Trim(),
-                Datos = ConstruirDatos()
+                Datos = ConstruirDatos(),
+                // Lote ya recibido: se reemplaza esa línea con el total (semántica R3).
+                Linea = _lineaLote
             };
             var respuesta = await Albaranes.PostLineaAsync(alta);
             if (!respuesta.Ok || respuesta.Datos is null) { MostrarError(respuesta.Error); return; }
@@ -1114,6 +1315,10 @@
             _precioAbierto = null;
             _sinCargo = false;
             _cadCortaAceptada = false;
+            _lineaLote = 0;
+            _cantAntLote = 0;
+            _totalLoteAceptado = false;
+            _cantGrandeAceptada = false;
             _ = RefrescarLineasAsync();
         }
         finally
@@ -1137,14 +1342,28 @@
 
     private bool _pidiendoLink;
     private string _linkTexto = "";
+    private string _textoDescuadre = "";
+    // Nivel de exigencia del link (ConfEmpresa de R3): 0 no se pide, 1 opcional, 2 obligatorio.
+    private byte _nivelLink = 2;
+
+    // El link es válido según el nivel: obligatorio → EAN13/14 con dígito de control;
+    // opcional → también vale vacío o «0»; sin configurar → siempre válido.
+    private bool LinkValido => _nivelLink switch
+    {
+        0 => true,
+        1 => _linkTexto.Trim() is "" or "0" || CodigoBarras.ValidaEan13_14(_linkTexto),
+        _ => CodigoBarras.ValidaEan13_14(_linkTexto)
+    };
+
+    private long LinkNumero => long.TryParse(_linkTexto.Trim(), out long l) ? l : 0;
 
     // Registrar la recepción: irreversible desde la app (genera la entrada en RW).
-    // Requiere el link escaneado del documento en papel (obligatorio para el proc) y,
-    // si la gama tiene controles, el cuadre de los totales del papel contra lo grabado.
+    // El link del documento se pide según la configuración de la empresa y, si la
+    // gama tiene controles, el cuadre de los totales del papel contra lo grabado.
     private async Task RegistrarAsync()
     {
-        if (_registrando || _numAlbaran <= 0 || FaltanControles
-            || !long.TryParse(_linkTexto, out long link) || link <= 0) return;
+        if (_registrando || _numAlbaran <= 0 || FaltanControles || !LinkValido) return;
+        long link = LinkNumero;
 
         _registrando = true;
         if (!_descuadreAvisado) _aviso = "";
@@ -1175,11 +1394,21 @@
                     {
                         // Primer aviso: no registra. El siguiente submit ("Registrar igualmente") sí.
                         _descuadreAvisado = true;
+                        _textoDescuadre = string.Join(" * ", descuadres);
                         _tipoAviso = "aviso";
                         _aviso = $"El albarán NO CUADRA ({string.Join(" · ", descuadres)}). Revisa las líneas o pulsa «Registrar igualmente».";
                         return;
                     }
                 }
+            }
+
+            // Descuadre aceptado: queda constancia como comentario de cabecera, igual que
+            // R3 (ComTxt en Registrar). Mejor esfuerzo: no bloquea el registro si falla.
+            if (_descuadreAvisado && _textoDescuadre.Length > 0)
+            {
+                await Comentarios.PostAsync(3, _fecha, _numAlbaran, 0,
+                    Sesion.Usuario!.CodUsuario, $"Registrado con descuadre: {_textoDescuadre}");
+                _textoDescuadre = "";
             }
 
             var respuesta = await Albaranes.RegistrarAsync(_numAlbaran, _fecha, Sesion.Usuario!.CodUsuario, link);
@@ -1199,5 +1428,19 @@
         _aviso = mensaje;
     }
 
-    private void Volver() => Nav.NavigateTo("/recepcionAlb");
+    // Al salir con un albarán pendiente con líneas, R3 ofrece registrarlo ("¿Registrar
+    // Albarán?"): el primer toque avisa y abre la opción; el segundo sale igualmente.
+    private bool _salidaAvisada;
+
+    private void Volver()
+    {
+        if (!_salidaAvisada && _numAlbaran > 0 && _lineasAnadidas > 0 && !_pidiendoLink)
+        {
+            _salidaAvisada = true;
+            _tipoAviso = "aviso";
+            _aviso = "El albarán queda PENDIENTE de registrar. Puedes registrarlo ahora con «Registrar recepción» o pulsar «← Albaranes» de nuevo para salir sin registrar.";
+            return;
+        }
+        Nav.NavigateTo("/recepcionAlb");
+    }
 }

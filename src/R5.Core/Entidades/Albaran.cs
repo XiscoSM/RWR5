@@ -64,6 +64,21 @@ public sealed class AlbaranLin
     public byte CompraCategoria { get; set; }
     public byte CompraRegSanitarioDesp { get; set; }
     public byte CompraRegSanitarioSac { get; set; }
+
+    // Valores de trazabilidad previos del lote (GET Lineas/{prod}?numLoteProv=):
+    // en ese result set las columnas traen el dato del lote ya recibido, no el flag.
+    public int DatosCanal { get; set; }
+    public string DatosCategoria { get; set; } = "";
+    public string DatosCrotal { get; set; } = "";
+    public bool DatosEstibaOk { get; set; }
+    public bool DatosTempOk { get; set; }
+    public DateTime? DatosFechaCad { get; set; }
+    public DateTime? DatosFechaNac { get; set; }
+    public DateTime? DatosFechaSac { get; set; }
+    public string DatosPaisNac { get; set; } = "";
+    public string DatosPaisEng { get; set; } = "";
+    public string DatosPaisSac { get; set; } = "";
+    public string DatosRegSanitarioSac { get; set; } = "";
 }
 
 /// <summary>Datos de trazabilidad de una línea de recepción (ProductoDatos de R3):

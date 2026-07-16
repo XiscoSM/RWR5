@@ -25,6 +25,11 @@ public sealed class AlbaranService
     public Task<ApiRespuesta<List<AlbaranLin>>> GetLineasAsync(int numAlbaran, DateTime fecha, short top = 200, CancellationToken ct = default)
         => _api.GetAsync<List<AlbaranLin>>($"Albaran/{numAlbaran}/{fecha:yyyy-MM-dd}/Lineas?top={top}", ct);
 
+    /// <summary>GET Albaran/{num}/{fecha}/Lineas/{prod}?numLoteProv= — línea previa del
+    /// lote en este albarán (trazabilidad ya grabada y cantidad acumulada); Linea 0 = lote nuevo.</summary>
+    public Task<ApiRespuesta<AlbaranLin>> GetLineaPorLoteAsync(int numAlbaran, DateTime fecha, int codProd, string numLoteProv, CancellationToken ct = default)
+        => _api.GetAsync<AlbaranLin>($"Albaran/{numAlbaran}/{fecha:yyyy-MM-dd}/Lineas/{codProd}?numLoteProv={Uri.EscapeDataString(numLoteProv)}", ct);
+
     /// <summary>GET Albaran/{num}/{fecha}/Ean/{ean} — línea a recepcionar con precios (num 0 = albarán nuevo).</summary>
     public Task<ApiRespuesta<AlbaranLin>> GetLineaPorEanAsync(int numAlbaran, DateTime fecha, long codEan, short codAlm, int codProv, int gama, int numPedido = 0, CancellationToken ct = default)
         => _api.GetAsync<AlbaranLin>(
@@ -34,6 +39,11 @@ public sealed class AlbaranService
     public Task<ApiRespuesta<AlbaranLin>> GetLineaPorProdAsync(int numAlbaran, DateTime fecha, int codProd, short codAlm, int codProv, int gama, int numPedido = 0, CancellationToken ct = default)
         => _api.GetAsync<AlbaranLin>(
             $"Albaran/{numAlbaran}/{fecha:yyyy-MM-dd}/Prod/{codProd}?codAlm={codAlm}&codProv={codProv}&gama={gama}&numPedido={numPedido}", ct);
+
+    /// <summary>GET Albaran/{num}/{fecha}/Gama/{codGama}/Lineas — productos de la gama con
+    /// pedida/recibida (modo NoIntroEanCompra y panel de consulta de R3).</summary>
+    public Task<ApiRespuesta<List<AlbaranLin>>> GetProdsPorGamaAsync(int numAlbaran, DateTime fecha, int codGama, short codAlm, short top = 500, CancellationToken ct = default)
+        => _api.GetAsync<List<AlbaranLin>>($"Albaran/{numAlbaran}/{fecha:yyyy-MM-dd}/Gama/{codGama}/Lineas?codAlm={codAlm}&top={top}", ct);
 
     /// <summary>POST Albaran/{alm}/{fecha}/{prod} — añade línea (NumAlbaran 0 crea el albarán; devuelve su número).</summary>
     public Task<ApiRespuesta<Documento>> PostLineaAsync(AlbLinInsertDTO linea, CancellationToken ct = default)

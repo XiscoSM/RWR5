@@ -2,6 +2,7 @@
    vs recibidas y precio neto. Consulta. *@
 @page "/recepcionAlb/{FechaRuta}/{NumAlbaran:int}"
 @inject AlbaranService Albaranes
+@inject DispositivoService Dispositivo
 @inject SesionUsuario Sesion
 @inject NavigationManager Nav
 
@@ -44,14 +45,17 @@
     @if (_pidiendoLink)
     {
         <form class="r5-tarjeta r5-columna r5-ancho-form" @onsubmit="RegistrarAsync">
-            <h3>Link del documento</h3>
-            <p class="r5-texto-suave r5-texto-sm">Escanea la etiqueta de link pegada al albarán en papel.</p>
-            <input id="linkDoc" class="r5-input r5-input--numero" type="text" inputmode="numeric" maxlength="13"
-                   @bind="_linkTexto" @bind:event="oninput" autofocus disabled="@_registrando" />
+            <h3>Link del documento @(_nivelLink == 1 ? "(opcional)" : "")</h3>
+            @if (_nivelLink > 0)
+            {
+                <p class="r5-texto-suave r5-texto-sm">Escanea la etiqueta de link pegada al albarán en papel.</p>
+                <input id="linkDoc" class="r5-input r5-input--numero" type="text" inputmode="numeric" maxlength="13"
+                       @bind="_linkTexto" @bind:event="oninput" autofocus disabled="@_registrando" />
+            }
             <Aviso Tipo="@_tipoAvisoRegistro" Mensaje="@_avisoRegistro" />
             <div class="r5-fila">
                 <button type="submit" class="r5-btn r5-btn--primario"
-                        disabled="@(_registrando || !long.TryParse(_linkTexto, out _))">
+                        disabled="@(_registrando || !LinkValido)">
                     @(_registrando ? "Registrando…" : "Confirmar registro")
                 </button>
                 <button type="button" class="r5-btn r5-btn--fantasma" @onclick="() => _pidiendoLink = false">Cancelar</button>
@@ -135,19 +139,35 @@
     private string _linkTexto = "";
     private string _avisoRegistro = "";
     private string _tipoAvisoRegistro = "error";
+    // Nivel de exigencia del link (ConfEmpresa de R3): 0 no se pide, 1 opcional, 2 obligatorio.
+    private byte _nivelLink = 2;
+
+    private bool LinkValido => _nivelLink switch
+    {
+        0 => true,
+        1 => _linkTexto.Trim() is "" or "0" || CodigoBarras.ValidaEan13_14(_linkTexto),
+        _ => CodigoBarras.ValidaEan13_14(_linkTexto)
+    };
 
     // Abre el formulario de link con el campo limpio y enfocado (lectura de escáner).
-    private void AbrirFormularioLink()
+    private async void AbrirFormularioLink()
     {
         _pidiendoLink = !_pidiendoLink;
         _linkTexto = "";
         _avisoRegistro = "";
+        if (_pidiendoLink && _nivelLink == 2)
+        {
+            // Con APIs que ya exponen el tri-estado, respeta la configuración real.
+            var info = await Dispositivo.ProbarApiAsync();
+            if (info.Ok && info.Datos is not null) { _nivelLink = info.Datos.NivelLink; StateHasChanged(); }
+        }
     }
 
-    // Registrar la recepción pendiente: exige el link del documento en papel.
+    // Registrar la recepción pendiente: link según la configuración de la empresa.
     private async Task RegistrarAsync()
     {
-        if (_registrando || _fecha is null || !long.TryParse(_linkTexto, out long link) || link <= 0) return;
+        if (_registrando || _fecha is null || !LinkValido) return;
+        long link = long.TryParse(_linkTexto.Trim(), out long l) ? l : 0;
 
         _registrando = true;
         _avisoRegistro = "";
