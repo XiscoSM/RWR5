@@ -42,6 +42,14 @@
                 <input id="almDestino" class="r5-input r5-input--numero" type="text" inputmode="numeric"
                        min="1" max="999" @bind="_codAlmDest" @bind:event="oninput" autofocus disabled="@_ocupado" />
             </div>
+            @if (!(Sesion.Usuario?.FechaDocHoy ?? true))
+            {
+                @* Sin FechaDocHoy el usuario puede fechar el documento (BNewTraspaso de R3). *@
+                <div class="r5-campo" style="max-width: 200px;">
+                    <label for="fechaDocTrasp">Fecha del documento</label>
+                    <input id="fechaDocTrasp" class="r5-input" type="date" @bind="_fecha" disabled="@_ocupado" />
+                </div>
+            }
             <Aviso Mensaje="@(_tipoAviso == "error" ? _aviso : "")" />
             <button type="submit" class="r5-btn r5-btn--primario r5-btn--bloque"
                     disabled="@(_ocupado || _codAlmDest is null or <= 0)">
@@ -194,6 +202,7 @@
     private List<TraspasoLin> _lineasDoc = new();
     private bool _cargandoLineas;
     private DateTime _fecha = DateTime.Today;   // al reanudar se toma la del traspaso
+    private bool _totalAceptado;                // confirmación del total acumulado (R3)
 
     protected override async Task OnInitializedAsync()
     {
@@ -327,6 +336,13 @@
             // EAN de balanza: cantidad embebida en el código (EanProdLote de R3).
             var parseado = CodigoBarras.TryParse(codigo);
             _cantidad = parseado is { TraeCantidad: true } ? parseado.Cant : UnidCaja;
+            // Con pedido vinculado, producto sin cantidad pedida = aviso soft de R3
+            // ("Va a traspasar un producto no pedido"); no bloquea.
+            if (NumPedidoVinculado > 0 && _linea.CantPedida == 0)
+            {
+                _tipoAviso = "aviso";
+                _aviso = $"{_linea.Prod.DescProd}: producto NO PEDIDO en el pedido {NumPedidoVinculado}. Puedes traspasarlo igualmente.";
+            }
         }
         finally
         {
@@ -349,6 +365,25 @@
         if (_cantidad < 0 && _linea.CantEnv + _cantidad < 0)
         {
             MostrarError($"La cantidad total del producto no puede quedar negativa (ya enviado: {Cantidad(_linea.CantEnv, _linea.Prod.DecimalesEnCant)}).");
+            return;
+        }
+
+        // Decimales solo si el producto los admite (R3 lo rechaza duro, no solo con step).
+        if (!_linea.Prod.DecimalesEnCant && _cantidad % 1 != 0)
+        { MostrarError($"{_linea.Prod.DescProd} no permite decimales en la cantidad."); return; }
+
+        // Tope de importe de línea de R3 (LinTraspaso.Cant): el acumulado no puede
+        // superar 99.999 € a coste.
+        if (Math.Abs((_linea.CantEnv + _cantidad) * _linea.Prod.UltPrecioCoste) > 99999m)
+        { MostrarError("Importe de línea superior a 99.999 €."); return; }
+
+        // Con cantidad ya acumulada, R3 confirma el total antes de grabar ("¿Correcto?"):
+        // dos toques para evitar re-escaneos que duplican.
+        if (_linea.CantEnv != 0 && !_totalAceptado)
+        {
+            _totalAceptado = true;
+            _tipoAviso = "aviso";
+            _aviso = $"El producto ya lleva {Cantidad(_linea.CantEnv, _linea.Prod.DecimalesEnCant)} en el traspaso. ¿Total correcto: {Cantidad(_linea.CantEnv + _cantidad, _linea.Prod.DecimalesEnCant)}? Pulsa «Añadir» de nuevo para confirmar.";
             return;
         }
 
@@ -385,7 +420,9 @@
             // (mismo orden que R3). Mejor esfuerzo, no bloquea el escaneo siguiente.
             if (_comentarioLinea.Length > 0)
             {
-                await Comentarios.PostAsync(5, _fecha, _numTraspaso, respuesta.Datos.Linea,
+                // OJO: R3 GRABA el comentario de línea de traspaso con TipoDoc 4 aunque
+                // los predefinidos se lean del tipo 5 (11_Trapasos.vb:8492 vs 1772).
+                await Comentarios.PostAsync(4, _fecha, _numTraspaso, respuesta.Datos.Linea,
                     Sesion.Usuario.CodUsuario, _comentarioLinea);
                 _comentarioLinea = "";
                 _selectorComentLinea?.Reset();
@@ -396,6 +433,7 @@
             _aviso = $"{_linea.Prod.DescProd}: {Cantidad(_cantidad, _linea.Prod.DecimalesEnCant)} añadido al traspaso {_numTraspaso}.";
             _linea = null;
             _codigo = "";
+            _totalAceptado = false;
             _ = RefrescarLineasAsync();
         }
         finally

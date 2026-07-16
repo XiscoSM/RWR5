@@ -34,6 +34,12 @@
     {
         <div class="r5-tarjeta r5-columna r5-ancho-form">
             <h3>Proveedor</h3>
+            @* Fecha del pedido editable en alta nueva (AsistNuevo de R3): afecta a la
+               tarifa/PNC por fecha del lookup de producto. *@
+            <div class="r5-campo" style="max-width: 200px;">
+                <label for="fechaPedidoCompra">Fecha del pedido</label>
+                <input id="fechaPedidoCompra" class="r5-input" type="date" @bind="_fecha" disabled="@_ocupado" />
+            </div>
             <form @onsubmit="BuscarProveedorAsync" class="r5-buscador">
                 <input id="busquedaProvPed" class="r5-input" type="text" inputmode="numeric"
                        placeholder="Escanea un producto del proveedor o teclea su código"
@@ -461,7 +467,14 @@
             {
                 int codProd = 0;
                 long codEan = 0;
-                if (codigo.Length >= 8 && long.TryParse(codigo, out long ean)) codEan = ean;
+                if (codigo.Length >= 8 && long.TryParse(codigo, out long ean))
+                {
+                    // Dígito de control EAN13/14 en cliente (R3: "Ean incorrecto, díg.
+                    // control erróneo"), salvo modo referencia de proveedor o catálogo.
+                    if (codigo.Length is 13 or 14 && !CodigoBarras.ValidaEan13_14(codigo))
+                    { MostrarError($"EAN incorrecto: dígito de control erróneo ({codigo})."); return; }
+                    codEan = ean;
+                }
                 else if (int.TryParse(codigo, out int cod) && cod > 0) codProd = cod;
                 else { MostrarError("Introduce un código numérico (producto o EAN)."); return; }
 
@@ -624,7 +637,9 @@
             var respuesta = await Pedidos.RegistrarAsync(_numPedido, Sesion.Usuario!.CodUsuario, _fechaPrevEnvio);
             if (!respuesta.Ok) { MostrarError(respuesta.Error); return; }
 
-            Nav.NavigateTo($"/pedidoCompra/{_numPedido}");
+            // R3 encadena cerrar → «¿Enviar por mail?»: el detalle se abre con el prompt
+            // de envío al proveedor ya visible.
+            Nav.NavigateTo($"/pedidoCompra/{_numPedido}?mail=1");
         }
         finally
         {

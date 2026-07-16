@@ -23,4 +23,6 @@ public sealed class TraspasoLin
     public decimal Importe { get; set; }
     public short CajasEnv { get; set; }
     public decimal CantEnv { get; set; }
+    /// <summary>Cantidad pedida en el pedido central vinculado (0 sin vínculo).</summary>
+    public decimal CantPedida { get; set; }
 }

@@ -84,6 +84,14 @@
                     <div><dt>Ya pedida (pedido abierto)</dt><dd>@Cantidad(_dto.CantYaPedida, _linea.Prod.DecimalesEnCant)</dd></div>
                 }
                 <div><dt>Unidades por caja</dt><dd>@_linea.Prod.UnidsCaja</dd></div>
+                @if (_linea.Prod.CajasPorCapa is > 1)
+                {
+                    <div><dt>Cajas por capa</dt><dd>@_linea.Prod.CajasPorCapa</dd></div>
+                }
+                @if (_linea.Prod.CajasPorPalet is > 1)
+                {
+                    <div><dt>Cajas por palet</dt><dd>@_linea.Prod.CajasPorPalet</dd></div>
+                }
             </dl>
 
             <div class="r5-campo">

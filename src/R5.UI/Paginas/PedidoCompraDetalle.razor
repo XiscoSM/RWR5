@@ -110,6 +110,18 @@
     /// <summary>Estado desde la bandeja (0=pendiente, 1=registrado); null en deep-link.</summary>
     [Parameter, SupplyParameterFromQuery(Name = "reg")] public int? Reg { get; set; }
 
+    /// <summary>mail=1: llegada desde el registro — R3 encadena cerrar → «¿Enviar por mail?».</summary>
+    [Parameter, SupplyParameterFromQuery(Name = "mail")] public int? Mail { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        if (Mail == 1 && _aviso.Length == 0)
+        {
+            _tipoAviso = "info";
+            _aviso = "Pedido registrado. ¿Quieres enviarlo por mail al proveedor? Usa «Enviar al proveedor».";
+        }
+    }
+
     private bool _cargando = true;
     private string _error = "";
     private List<PedidoCompraLin> _lineas = new();
