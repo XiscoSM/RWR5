@@ -33,10 +33,11 @@ public sealed class AjusteService
     public Task<ApiRespuesta<List<Programa>>> GetProgramasAsync(CancellationToken ct = default)
         => _api.GetAsync<List<Programa>>("Ajuste/ListProgramas", ct);
 
-    /// <summary>GET Ajuste/{num}/{fecha}/Linea — producto a ajustar, con su coste y lo ya ajustado.</summary>
-    public Task<ApiRespuesta<AjusteLin>> GetLineaProductoAsync(int numAjuste, DateTime fecha, short codAlmOrigen, short codAlmDestino, int codProd, long codEan, CancellationToken ct = default)
+    /// <summary>GET Ajuste/{num}/{fecha}/Linea — producto a ajustar, con su coste y lo ya
+    /// ajustado. lote &gt; 0 = código compuesto de trazabilidad (EanProdLote de R3).</summary>
+    public Task<ApiRespuesta<AjusteLin>> GetLineaProductoAsync(int numAjuste, DateTime fecha, short codAlmOrigen, short codAlmDestino, int codProd, long codEan, int lote = 0, CancellationToken ct = default)
         => _api.GetAsync<AjusteLin>(
-            $"Ajuste/{numAjuste}/{fecha:yyyy-MM-dd}/Linea?codEan={codEan}&codProd={codProd}&lote=0&codAlmDestino={codAlmDestino}&codAlmOrigen={codAlmOrigen}", ct);
+            $"Ajuste/{numAjuste}/{fecha:yyyy-MM-dd}/Linea?codEan={codEan}&codProd={codProd}&lote={lote}&codAlmDestino={codAlmDestino}&codAlmOrigen={codAlmOrigen}", ct);
 
     /// <summary>POST Ajuste/{num}/{fecha}/{prod} — añade línea (num 0 crea el ajuste; devuelve su número).</summary>
     public Task<ApiRespuesta<Documento>> PostLineaAsync(AjusteLinInsertDTO linea, CancellationToken ct = default)

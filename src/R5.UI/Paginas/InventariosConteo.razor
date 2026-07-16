@@ -137,8 +137,17 @@
         {
             short codAlm = Sesion.Usuario!.Almacen.CodAlm;
 
+            // Códigos compuestos de balanza/trazabilidad (EanProdLote de R3): 16/19/28
+            // dígitos llevan el producto embebido y los de 19/28 no caben en un long,
+            // así que se descomponen ANTES de decidir la ruta.
+            var parseado = CodigoBarras.TryParse(codigo);
+
             ApiRespuesta<InventarioLin> respuesta;
-            if (codigo.Length >= 8 && long.TryParse(codigo, out long ean))
+            if (parseado is { Prod: > 0 })
+            {
+                respuesta = await Inventarios.GetProdPorCodAsync(codAlm, _fecha.Value, parseado.Prod);
+            }
+            else if (codigo.Length >= 8 && long.TryParse(codigo, out long ean))
             {
                 respuesta = await Inventarios.GetProdPorEanAsync(codAlm, _fecha.Value, ean);
                 _eanEscaneado = ean;
@@ -159,7 +168,6 @@
             _linea = respuesta.Datos;
             // EAN de balanza: cantidad embebida en el código (EanProdLote de R3).
             // Con EAN de caja el conteo natural es una caja; sin nada, una unidad.
-            var parseado = CodigoBarras.TryParse(codigo);
             _cantidad = parseado is { TraeCantidad: true } ? parseado.Cant
                 : _linea.Ean.EsCaja ? _linea.Ean.UnidCaja : 1;
         }

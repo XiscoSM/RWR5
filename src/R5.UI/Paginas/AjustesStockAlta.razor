@@ -286,9 +286,19 @@
         {
             short origen = Sesion.Usuario!.Almacen.CodAlm;
 
+            // Códigos compuestos de balanza/trazabilidad (EanProdLote de R3): 16 díg =
+            // prod+lote, 19 = prod+peso+importe, 28 = +lote. Los de 19/28 no caben en un
+            // long: hay que descomponer ANTES de decidir la ruta, como hacía R3.
             int codProd = 0;
             long codEan = 0;
-            if (codigo.Length >= 8 && long.TryParse(codigo, out long ean)) codEan = ean;
+            int lote = 0;
+            var parseado = CodigoBarras.TryParse(codigo);
+            if (parseado is { Prod: > 0 })
+            {
+                codProd = parseado.Prod;
+                lote = parseado.Lote;
+            }
+            else if (codigo.Length >= 8 && long.TryParse(codigo, out long ean)) codEan = ean;
             else if (int.TryParse(codigo, out int cod) && cod > 0)
             {
                 // Teclear el código de producto exige permiso (RW_CodProdEnConsultas de R3).
@@ -297,14 +307,13 @@
             }
             else { MostrarError("Introduce un código numérico (producto o EAN)."); return; }
 
-            var respuesta = await Ajustes.GetLineaProductoAsync(_numAjuste, _fecha, origen, _codAlmDest, codProd, codEan);
+            var respuesta = await Ajustes.GetLineaProductoAsync(_numAjuste, _fecha, origen, _codAlmDest, codProd, codEan, lote);
             if (!respuesta.Ok || respuesta.Datos is null) { MostrarError(respuesta.Error); return; }
             if (respuesta.Datos.Prod.CodProd <= 0) { MostrarError($"El código {codigo} no corresponde a ningún producto."); return; }
 
             _linea = respuesta.Datos;
             _eanEscaneado = codEan;
             // EAN de balanza: cantidad embebida en el código (EanProdLote de R3).
-            var parseado = CodigoBarras.TryParse(codigo);
             _cantidad = parseado is { TraeCantidad: true } ? parseado.Cant : 1;
         }
         finally

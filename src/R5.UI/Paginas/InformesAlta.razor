@@ -275,8 +275,23 @@
         {
             short codAlm = Sesion.Usuario!.Almacen.CodAlm;
 
+            // Códigos compuestos de balanza/trazabilidad (EanProdLote de R3): 16 díg =
+            // prod+lote, 19 = prod+peso+importe, 28 = +lote. Se descompone ANTES de
+            // decidir la ruta: los de 19/28 dígitos no caben en un long.
+            var parseado = CodigoBarras.TryParse(codigo);
+
+            // Dígito de control (R3 aceptar_EAN): un EAN13/14 con checksum erróneo se
+            // rechaza aquí con el mensaje específico, no con el genérico del servidor.
+            if (parseado is null && codigo.Length is 13 or 14 && codigo.All(char.IsAsciiDigit))
+            { MostrarError($"EAN incorrecto: dígito de control erróneo ({codigo})."); return; }
+
             ApiRespuesta<InformeLin> respuesta;
-            if (codigo.Length >= 8 && long.TryParse(codigo, out long ean))
+            if (parseado is { Prod: > 0 })
+            {
+                // Compuesto escaneado: se busca por el código de producto embebido.
+                respuesta = await Informes.GetProdPorCodAsync(_tipoElegido.Tipo, codAlm, parseado.Prod);
+            }
+            else if (codigo.Length >= 8 && long.TryParse(codigo, out long ean))
             {
                 respuesta = await Informes.GetProdPorEanAsync(_tipoElegido.Tipo, codAlm, ean);
                 _eanEscaneado = ean;
@@ -306,6 +321,10 @@
             _valorA = _linea.ValorA ?? "";
             _valorB = _linea.ValorB ?? "";
             _valorC = _linea.ValorC ?? "";
+            // Trazabilidad desde el código compuesto (R3): el lote precarga ValorC y la
+            // cantidad embebida (peso de balanza) precarga la cantidad.
+            if (parseado is { Lote: > 0 } && _valorC.Length == 0) _valorC = parseado.Lote.ToString();
+            if (parseado is { TraeCantidad: true } && _cant == 0) _cant = parseado.Cant;
         }
         finally
         {
