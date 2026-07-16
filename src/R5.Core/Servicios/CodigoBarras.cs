@@ -84,4 +84,58 @@ public static class CodigoBarras
             _ => null
         };
     }
+
+    /// <summary>Resultado del GS1-128 de ternera: crotal (AI 251) y país numérico +
+    /// registro sanitario de sacrificio (AI 7030). PaisNum 0 = sin AI 7030.</summary>
+    public sealed record Gs1Ternera(string Crotal, int PaisNum, string RegSanitarioSac);
+
+    /// <summary>
+    /// Port de DecoEan128Ternera de R3 (9_Compras.vb:3562): si el texto es corto
+    /// (&lt;15) se trata como crotal tecleado a mano; entre 15 y 17 es inválido; a
+    /// partir de 18 se buscan los AIs 251 (crotal, 14) y 7030 (país 3 díg. +
+    /// reg. sanitario). Devuelve null si el EAN128 no es válido.
+    /// </summary>
+    public static Gs1Ternera? TryParseTernera(string ean)
+    {
+        ean = ean.Trim();
+        if (ean.Length < 15) return new Gs1Ternera(ean.ToUpperInvariant(), 0, "");
+        if (ean.Length < 18) return null;
+
+        // R3 antepone un espacio (o sustituye el primer carácter no numérico por él)
+        // para poder anclar la búsqueda de AIs "precedidos de separador".
+        ean = char.IsAsciiDigit(ean[0]) ? " " + ean : " " + ean[1..];
+
+        string txt251 = "", txt7030 = "";
+        int len251 = 14, len7030 = 13;
+
+        if (ean.IndexOf(" 251", StringComparison.Ordinal) == 0) txt251 = Recorta(ean, 4, len251);
+        if (ean.IndexOf(" 7030", StringComparison.Ordinal) == 0) txt7030 = Recorta(ean, 5, len7030);
+
+        if (txt251.Length == 0 && txt7030.Length > 0)
+        {
+            int i = ean.IndexOf(" 251", 18, StringComparison.Ordinal);
+            if (i < 0) i = ean.IndexOf("251", 18, StringComparison.Ordinal) is >= 0 and var j ? j - 1 : -1;
+            if (i >= 0) txt251 = Recorta(ean, i + 5, Math.Min(len251, ean.Length - (i + 5)));
+        }
+        if (txt7030.Length == 0 && txt251.Length > 0)
+        {
+            int i = ean.IndexOf(" 7030", 16, StringComparison.Ordinal);
+            if (i < 0) i = ean.IndexOf("7030", 16, StringComparison.Ordinal) is >= 0 and var j ? j - 1 : -1;
+            if (i >= 0) txt7030 = Recorta(ean, i + 6, Math.Min(len7030, ean.Length - (i + 6)));
+        }
+
+        if (txt251.Length == 0 && txt7030.Length == 0) return null;
+
+        int paisNum = 0;
+        string regSan = "";
+        if (txt7030.Length >= 3 && int.TryParse(txt7030[..3], out paisNum))
+            regSan = txt7030[3..].Trim();
+        return new Gs1Ternera(txt251.Trim().ToUpperInvariant(), paisNum, regSan.ToUpperInvariant());
+    }
+
+    private static string Recorta(string s, int inicio, int len)
+    {
+        if (inicio >= s.Length || len <= 0) return "";
+        return s.Substring(inicio, Math.Min(len, s.Length - inicio));
+    }
 }

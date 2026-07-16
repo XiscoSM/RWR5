@@ -258,22 +258,25 @@
                 }
 
                 @* Trazabilidad: fecha de caducidad obligatoria si el producto la controla
-                   (DiasCaducidad > 0) y lote del proveedor si controla lotes. *@
-                @if (_linea.Prod.DiasCaducidad > 0 || _linea.Prod.ControlaLotes)
+                   (DiasCaducidad > 0 o perfil de compra) y lote del proveedor si controla lotes. *@
+                @if (PideFechaCad || PideLote)
                 {
                     <div class="r5-fila" style="flex-wrap: wrap;">
-                        @if (_linea.Prod.DiasCaducidad > 0)
+                        @if (PideFechaCad)
                         {
                             <div class="r5-campo" style="flex:1; min-width: 200px;">
                                 <label for="fechaCadRec">Fecha de caducidad</label>
                                 <input id="fechaCadRec" class="r5-input" type="date"
                                        @bind="_fechaCaducidad" disabled="@_anadiendo" />
-                                <span class="r5-texto-suave r5-texto-sm">
-                                    Mínimo sin aviso: @DateTime.Today.AddDays(_linea.Prod.DiasCaducidad).ToString("dd/MM/yy") (@_linea.Prod.DiasCaducidad días)
-                                </span>
+                                @if (_linea.Prod.DiasCaducidad > 0)
+                                {
+                                    <span class="r5-texto-suave r5-texto-sm">
+                                        Mínimo sin aviso: @DateTime.Today.AddDays(_linea.Prod.DiasCaducidad).ToString("dd/MM/yy") (@_linea.Prod.DiasCaducidad días)
+                                    </span>
+                                }
                             </div>
                         }
-                        @if (_linea.Prod.ControlaLotes)
+                        @if (PideLote)
                         {
                             <div class="r5-campo" style="flex:1; min-width: 200px;">
                                 <label for="loteProvRec">Lote del proveedor</label>
@@ -281,6 +284,118 @@
                                        @bind="_loteProv" disabled="@_anadiendo" />
                             </div>
                         }
+                    </div>
+                }
+
+                @* Datos legales de trazabilidad cárnica según el perfil de compra del
+                   producto (Compra_* de R3): cada campo solo aparece si su flag lo pide. *@
+                @if (TieneTraza)
+                {
+                    <div class="r5-columna" style="gap: var(--esp-3); border: 1px solid var(--c-borde); border-radius: 10px; padding: 12px;">
+                        <strong>Trazabilidad</strong>
+                        <div class="r5-fila" style="flex-wrap: wrap;">
+                            @if (_linea.CompraCrotal > 0)
+                            {
+                                <div class="r5-campo" style="flex:2; min-width: 240px;">
+                                    <label for="crotalRec">Crotal (o etiqueta GS1-128)</label>
+                                    <input id="crotalRec" class="r5-input" type="text" maxlength="40"
+                                           @bind="_traza.Crotal" @bind:after="DecodificarCrotal" disabled="@_anadiendo" />
+                                </div>
+                            }
+                            @if (_linea.CompraCategoria > 0)
+                            {
+                                <div class="r5-campo" style="min-width: 130px;">
+                                    <label for="categoriaRec">Categoría</label>
+                                    <input id="categoriaRec" class="r5-input" type="text" maxlength="3"
+                                           placeholder="p. ej. AU3" @bind="_traza.Categoria" disabled="@_anadiendo" />
+                                </div>
+                            }
+                            @if (_linea.CompraCanal > 0)
+                            {
+                                <div class="r5-campo" style="min-width: 120px;">
+                                    <label for="canalRec">Canal</label>
+                                    <input id="canalRec" class="r5-input r5-input--numero" type="number" inputmode="numeric" min="1"
+                                           @bind="_traza.Canal" disabled="@_anadiendo" />
+                                </div>
+                            }
+                        </div>
+                        <div class="r5-fila" style="flex-wrap: wrap;">
+                            @if (_linea.CompraPaisNac > 0)
+                            {
+                                <div class="r5-campo" style="min-width: 150px;">
+                                    <label for="paisNacRec">País nacimiento</label>
+                                    <input id="paisNacRec" class="r5-input" type="text" maxlength="2" style="text-transform: uppercase;"
+                                           @bind="_traza.PaisNac" disabled="@_anadiendo" />
+                                    <span class="r5-texto-suave r5-texto-sm">@NombrePais(_traza.PaisNac)</span>
+                                </div>
+                            }
+                            @if (_linea.CompraPaisEng > 0)
+                            {
+                                <div class="r5-campo" style="min-width: 150px;">
+                                    <label for="paisEngRec">País engorde</label>
+                                    <input id="paisEngRec" class="r5-input" type="text" maxlength="2" style="text-transform: uppercase;"
+                                           @bind="_traza.PaisEng" disabled="@_anadiendo" />
+                                    <span class="r5-texto-suave r5-texto-sm">@NombrePais(_traza.PaisEng)</span>
+                                </div>
+                            }
+                            @if (_linea.CompraPaisSac > 0)
+                            {
+                                <div class="r5-campo" style="min-width: 150px;">
+                                    <label for="paisSacRec">País sacrificio</label>
+                                    <input id="paisSacRec" class="r5-input" type="text" maxlength="2" style="text-transform: uppercase;"
+                                           @bind="_traza.PaisSac" disabled="@_anadiendo" />
+                                    <span class="r5-texto-suave r5-texto-sm">@NombrePais(_traza.PaisSac)</span>
+                                </div>
+                            }
+                        </div>
+                        <div class="r5-fila" style="flex-wrap: wrap;">
+                            @if (_linea.CompraRegSanitarioSac > 0)
+                            {
+                                <div class="r5-campo" style="flex:1; min-width: 200px;">
+                                    <label for="regSacRec">Reg. sanitario sacrificio</label>
+                                    <input id="regSacRec" class="r5-input" type="text" maxlength="30" style="text-transform: uppercase;"
+                                           @bind="_traza.RegSanitarioSac" disabled="@_anadiendo" />
+                                </div>
+                            }
+                            @if (_linea.CompraRegSanitarioDesp > 0)
+                            {
+                                <div class="r5-campo" style="flex:1; min-width: 200px;">
+                                    <label for="regDespRec">Reg. sanitario despiece</label>
+                                    <input id="regDespRec" class="r5-input" type="text" maxlength="30" style="text-transform: uppercase;"
+                                           @bind="_traza.RegSanitarioDesp" disabled="@_anadiendo" />
+                                </div>
+                            }
+                        </div>
+                        <div class="r5-fila" style="flex-wrap: wrap;">
+                            @if (_linea.CompraFechaNac > 0)
+                            {
+                                <div class="r5-campo" style="min-width: 180px;">
+                                    <label for="fechaNacRec">Fecha nacimiento</label>
+                                    <input id="fechaNacRec" class="r5-input" type="date" @bind="_traza.FechaNac" disabled="@_anadiendo" />
+                                </div>
+                            }
+                            @if (_linea.CompraFechaSac > 0)
+                            {
+                                <div class="r5-campo" style="min-width: 180px;">
+                                    <label for="fechaSacRec">Fecha sacrificio</label>
+                                    <input id="fechaSacRec" class="r5-input" type="date" @bind="_traza.FechaSac" disabled="@_anadiendo" />
+                                </div>
+                            }
+                            @if (_linea.CompraEstiba > 0)
+                            {
+                                <label class="r5-fila" style="gap: var(--esp-2); cursor: pointer; align-self: flex-end;">
+                                    <input type="checkbox" @bind="_traza.EstibaOk" disabled="@_anadiendo" />
+                                    <span>Estiba OK</span>
+                                </label>
+                            }
+                            @if (_linea.CompraTemperatura > 0)
+                            {
+                                <label class="r5-fila" style="gap: var(--esp-2); cursor: pointer; align-self: flex-end;">
+                                    <input type="checkbox" @bind="_traza.TempOk" disabled="@_anadiendo" />
+                                    <span>Temperatura OK</span>
+                                </label>
+                            }
+                        </div>
                     </div>
                 }
 
@@ -696,6 +811,11 @@
             _sinCargo = false;
             _confirmarCadCorta = false;
             _cadCortaAceptada = false;
+            LimpiarTrazabilidad();
+            // Caducidad automática (R3: Compra_FechaCad=1 + FechaCadAuto): se precarga
+            // fecha del documento + DiasCaducidad + 1; el operario puede corregirla.
+            if (_linea is not null && _linea.CompraFechaCad == 1 && _linea.CompraFechaCadAuto)
+                _fechaCaducidad = _fecha.AddDays(_linea.Prod.DiasCaducidad + 1);
 
             // Aviso de duplicado (una sola vez, antes de crear el albarán): si el usuario ya
             // tiene un albarán de este proveedor con el mismo nº de proveedor, probablemente
@@ -739,6 +859,139 @@
         }
     }
 
+    // ---- Trazabilidad cárnica (perfil Compra_* de R3) ----
+    private DatosTrazabilidad _traza = new();
+
+    private bool PideFechaCad => _linea is not null && (_linea.Prod.DiasCaducidad > 0 || _linea.CompraFechaCad > 0);
+    private bool PideLote => _linea is not null && (_linea.Prod.ControlaLotes || _linea.CompraLoteProv);
+    private bool TieneTraza => _linea is not null &&
+        (_linea.CompraCrotal + _linea.CompraCategoria + _linea.CompraCanal
+         + _linea.CompraPaisNac + _linea.CompraPaisEng + _linea.CompraPaisSac
+         + _linea.CompraRegSanitarioSac + _linea.CompraRegSanitarioDesp
+         + _linea.CompraFechaNac + _linea.CompraFechaSac
+         + _linea.CompraEstiba + _linea.CompraTemperatura) > 0;
+
+    private static string NombrePais(string iso2)
+        => iso2.Trim().Length == 2 ? Paises.PorIso2(iso2)?.Nombre ?? "país no válido" : "";
+
+    // Crotal tecleado o etiqueta GS1-128 escaneada (DecoEan128Ternera de R3): el AI 251
+    // es el crotal y el AI 7030 trae país numérico + reg. sanitario de sacrificio.
+    private void DecodificarCrotal()
+    {
+        string texto = _traza.Crotal.Trim();
+        if (texto.Length == 0) return;
+
+        var gs1 = CodigoBarras.TryParseTernera(texto);
+        if (gs1 is null) { MostrarError($"«{texto}»: EAN128 no válido."); _traza.Crotal = ""; return; }
+
+        _traza.Crotal = gs1.Crotal;
+        if (gs1.PaisNum > 0 && _linea is not null)
+        {
+            var pais = Paises.PorNumero(gs1.PaisNum);
+            if (pais is not null)
+            {
+                if (_linea.CompraPaisSac > 0) _traza.PaisSac = pais.Iso2;
+                if (_linea.CompraRegSanitarioSac > 0 && gs1.RegSanitarioSac.Length > 0)
+                    _traza.RegSanitarioSac = gs1.RegSanitarioSac;
+            }
+        }
+        // El crotal empieza por el país: se valida y se propaga al país de nacimiento (R3).
+        if (_traza.Crotal.Length >= 4 && _linea is not null)
+        {
+            string prefijo = _traza.Crotal[..2];
+            if (Paises.PorIso2(prefijo) is not null && _linea.CompraPaisNac > 0 && _traza.PaisNac.Length == 0)
+                _traza.PaisNac = prefijo;
+        }
+        _aviso = "";
+    }
+
+    // Validaciones de ErrorValidaciones de R3 (9_Compras.vb:3241-3464) aplicadas de golpe
+    // al añadir. Devuelve null si todo es correcto.
+    private string? ValidarTrazabilidad()
+    {
+        if (_linea is null) return null;
+
+        if (_linea.CompraCrotal > 0)
+        {
+            if (_traza.Crotal.Trim().Length < 4) return "Crotal no válido (mínimo 4 caracteres).";
+            if (Paises.PorIso2(_traza.Crotal[..2]) is null) return "País del crotal no válido.";
+        }
+        if (_linea.CompraCategoria > 0)
+        {
+            // Patrón de R3: [AEDBC][SEUROP][1-5] (sexo/edad + conformación + engrasamiento).
+            _traza.Categoria = _traza.Categoria.Trim().ToUpperInvariant();
+            if (!System.Text.RegularExpressions.Regex.IsMatch(_traza.Categoria, "^[AEDBC][SEUROP][1-5]$"))
+                return $"Categoría «{_traza.Categoria}» no válida (formato letra+letra+número, p. ej. AU3).";
+        }
+        if (_linea.CompraCanal > 0 && _traza.Canal <= 0) return "Obligatorio rellenar el canal.";
+        foreach (var (flag, valor, nombre) in new[]
+        {
+            (_linea.CompraPaisNac, _traza.PaisNac, "país de nacimiento"),
+            (_linea.CompraPaisEng, _traza.PaisEng, "país de engorde"),
+            (_linea.CompraPaisSac, _traza.PaisSac, "país de sacrificio")
+        })
+        {
+            if (flag == 0) continue;
+            if (Paises.PorIso2(valor) is null) return $"Código de {nombre} no válido.";
+        }
+        if (_linea.CompraPaisNac > 0 && _linea.CompraCrotal > 0 && _traza.Crotal.Length > 2
+            && !_traza.Crotal.StartsWith(_traza.PaisNac.Trim().ToUpperInvariant(), StringComparison.Ordinal))
+            return "El código de país no coincide con el crotal.";
+        if (_linea.CompraRegSanitarioSac > 0 && _traza.RegSanitarioSac.Trim().Length == 0)
+            return "Registro sanitario de sacrificio obligatorio.";
+        if (_linea.CompraRegSanitarioDesp > 0 && _traza.RegSanitarioDesp.Trim().Length == 0)
+            return "Registro sanitario de despiece obligatorio.";
+        if (_linea.CompraFechaNac > 0)
+        {
+            if (_traza.FechaNac is null) return "Falta la fecha de nacimiento.";
+            if (_traza.FechaNac > DateTime.Today) return "La fecha de nacimiento no puede ser posterior a hoy.";
+        }
+        if (_linea.CompraFechaSac > 0)
+        {
+            if (_traza.FechaSac is null) return "Falta la fecha de sacrificio.";
+            if (_traza.FechaSac > DateTime.Today) return "La fecha de sacrificio no puede ser posterior a hoy.";
+            if (_traza.FechaNac is not null && _traza.FechaSac <= _traza.FechaNac)
+                return "La fecha de sacrificio debe ser posterior a la de nacimiento.";
+        }
+        if (_linea.CompraEstiba > 0 && !_traza.EstibaOk) return "La estiba debe estar OK para recepcionar.";
+        if (_linea.CompraTemperatura > 0 && !_traza.TempOk) return "La temperatura debe estar OK para recepcionar.";
+        return null;
+    }
+
+    // JSON de Datos para el proc: con perfil de trazabilidad se construye con el
+    // contrato de R3 (DatosToJson); sin perfil, passthrough del Get (canon R4).
+    private string ConstruirDatos()
+    {
+        if (_linea is null) return "";
+        if (!TieneTraza && !PideLote && _linea.CompraFechaCad == 0) return _linea.Datos ?? "";
+        _traza.LoteProv = _loteProv.Trim().ToUpperInvariant();
+        _traza.FechaCad = _fechaCaducidad;
+        return _traza.ToJson(_linea);
+    }
+
+    // Tras añadir, los campos con flag 2 retienen su valor para el siguiente producto
+    // (semántica "se pide y mantiene" de R3); el resto se limpia.
+    private void LimpiarTrazabilidad()
+    {
+        if (_linea is null) { _traza = new(); return; }
+        var previa = _traza;
+        _traza = new DatosTrazabilidad
+        {
+            Crotal = _linea.CompraCrotal == 2 ? previa.Crotal : "",
+            Categoria = _linea.CompraCategoria == 2 ? previa.Categoria : "",
+            Canal = _linea.CompraCanal == 2 ? previa.Canal : 0,
+            PaisNac = _linea.CompraPaisNac == 2 ? previa.PaisNac : "",
+            PaisEng = _linea.CompraPaisEng == 2 ? previa.PaisEng : "",
+            PaisSac = _linea.CompraPaisSac == 2 ? previa.PaisSac : "",
+            RegSanitarioSac = _linea.CompraRegSanitarioSac == 2 ? previa.RegSanitarioSac : "",
+            RegSanitarioDesp = _linea.CompraRegSanitarioDesp == 2 ? previa.RegSanitarioDesp : "",
+            FechaNac = _linea.CompraFechaNac == 2 ? previa.FechaNac : null,
+            FechaSac = _linea.CompraFechaSac == 2 ? previa.FechaSac : null,
+            EstibaOk = _linea.CompraEstiba == 2 && previa.EstibaOk,
+            TempOk = _linea.CompraTemperatura == 2 && previa.TempOk
+        };
+    }
+
     // El operario aceptó la fecha de caducidad corta: se repite el alta con la excepción marcada.
     private async Task ContinuarCadCortaAsync()
     {
@@ -755,7 +1008,12 @@
         // no puede acabar grabada como unidades.
         if (Math.Abs(_cantidad) >= 10000) { MostrarError($"Cantidad {_cantidad} no valida: ¿has escaneado un codigo en el campo de cantidad?"); return; }
 
+        // --- Trazabilidad cárnica según el perfil de compra (crotal, países, sanitarios…) ---
+        if (ValidarTrazabilidad() is { } errorTraza) { MostrarError(errorTraza); return; }
+
         // --- Fecha de caducidad (productos que la controlan) ---
+        if (PideFechaCad && _fechaCaducidad is null)
+        { MostrarError("Introduce la fecha de caducidad del producto."); return; }
         if (_linea.Prod.DiasCaducidad > 0)
         {
             if (_fechaCaducidad is null) { MostrarError("Introduce la fecha de caducidad del producto."); return; }
@@ -823,11 +1081,12 @@
                 NumAlbProv = _numAlbProv.Trim(),
                 TipoPrecio = _linea.TipoPrecio,
                 PncFecha = _linea.PncFecha,
-                // Trazabilidad: caducidad y lote capturados; Datos pasa tal cual llegó del
-                // Get (mismo passthrough que R4).
+                // Trazabilidad: caducidad y lote capturados; si el producto tiene perfil de
+                // trazabilidad se construye el JSON de Datos con el contrato de R3
+                // (DatosToJson); si no, passthrough del Get como hasta ahora.
                 FechaCaducidad = _fechaCaducidad,
                 NumLoteProv = _loteProv.Trim(),
-                Datos = _linea.Datos ?? ""
+                Datos = ConstruirDatos()
             };
             var respuesta = await Albaranes.PostLineaAsync(alta);
             if (!respuesta.Ok || respuesta.Datos is null) { MostrarError(respuesta.Error); return; }
@@ -847,6 +1106,7 @@
             _lineasAnadidas++;
             _tipoAviso = "exito";
             _aviso = $"{_linea.Prod.DescProd}: {Cantidad(_cantidad, _linea.Prod.DecimalesEnCant)} añadido al albarán {_numAlbaran}.";
+            LimpiarTrazabilidad();
             _linea = null;
             _codigo = "";
             _fechaCaducidad = null;
