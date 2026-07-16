@@ -520,9 +520,28 @@
         }
     }
 
+    private bool _ratioAceptado;
+
     private async Task RegistrarAsync()
     {
         if (_registrando || _prodElegido is null || _numElab <= 0 || _cantElaborada <= 0) return;
+
+        // Doble control anti-error de báscula de R3 (32_Elaboracion:441): la cantidad
+        // elaborada debe rondar la suma de ingredientes (ratio 0,9-1,1); fuera de rango
+        // se exige confirmar en un segundo intento.
+        decimal totalIngredientes = _intro.Sum(c => c.Cant);
+        if (totalIngredientes > 0 && !_ratioAceptado)
+        {
+            decimal ratio = _cantElaborada / totalIngredientes;
+            if (ratio is < 0.9m or > 1.1m)
+            {
+                _ratioAceptado = true;
+                _tipoAviso = "aviso";
+                _aviso = $"La cantidad elaborada ({Cantidad(_cantElaborada, true)}) se desvía de la suma de ingredientes ({Cantidad(totalIngredientes, true)}). Revisa la báscula y vuelve a registrar para confirmar.";
+                return;
+            }
+        }
+        _ratioAceptado = false;
 
         _registrando = true;
         _aviso = "";

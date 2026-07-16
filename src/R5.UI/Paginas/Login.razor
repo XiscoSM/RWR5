@@ -100,6 +100,23 @@
                 return;
             }
 
+            // Restricción de red por usuario (Menu_R3:1190): si RW_RedIpUsuario está
+            // informado, alguna IP local debe contener ese fragmento de red.
+            string redPermitida = respuesta.Datos.RedIpUsuario?.Trim() ?? "";
+            if (redPermitida.Length > 0)
+            {
+                bool redOk = System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()
+                    .Where(n => n.OperationalStatus == System.Net.NetworkInformation.OperationalStatus.Up)
+                    .SelectMany(n => n.GetIPProperties().UnicastAddresses)
+                    .Where(a => a.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+                    .Any(a => a.Address.ToString().Contains(redPermitida, StringComparison.OrdinalIgnoreCase));
+                if (!redOk)
+                {
+                    await ErrorLoginAsync($"El usuario {respuesta.Datos.DescUsuario} no puede iniciar en esta dirección de red. Red permitida: {redPermitida}.");
+                    return;
+                }
+            }
+
             respuesta.Datos.NumTerminal = Config.NumTerminal;
             Sesion.IniciarSesion(respuesta.Datos);
 
