@@ -3,6 +3,7 @@
    añadir/editar producto y editar datos — sin cadenas de popups (rediseño R3). *@
 @page "/pedidoCliente/{Pedido:int}"
 @inject PedidoClienteService Pedidos
+@inject ProductoService Productos
 @inject SesionUsuario Sesion
 @inject NavigationManager Nav
 @inject IJSRuntime JS
@@ -31,7 +32,8 @@
                                     Deshabilitado="@(_lineas.Count == 0)"
                                     OnConfirmar="EnviarAsync" />
                 }
-                @if (_cab.Vivo && _cab.EstadoDoc is >= 1 and <= 2)
+                @* Preparar todo disponible en EstadoDoc 1-3, como R3 (línea 1936). *@
+                @if (_cab.Vivo && _cab.EstadoDoc is >= 1 and <= 3)
                 {
                     <BotonConfirmar Texto="Preparar todo"
                                     Pregunta="¿Pasar a preparación todas las líneas pendientes?"
@@ -174,6 +176,17 @@
                             <span class="r5-ficha__nombre">@_prodSel.DescProd</span>
                         </div>
                     </div>
+                    @if (_infoProd is not null)
+                    {
+                        @* Ficha del producto como el selector de R3: PVP, stock, U/C, últimas compras. *@
+                        <div class="r5-fila" style="flex-wrap: wrap;">
+                            @if (_infoProd.Pvp is not null) { <span class="r5-chip r5-chip--suave">PVP @($"{_infoProd.Pvp:0.00} €")</span> }
+                            @if (_infoProd.Stock is not null) { <span class="r5-chip r5-chip--suave">Stock @Cantidad(_infoProd.Stock, _prodSel.DecimalesEnCant)</span> }
+                            @if (_infoProd.UnidsCaja > 0) { <span class="r5-chip r5-chip--suave">U/C @_infoProd.UnidsCaja</span> }
+                            @if (_infoProd.FechaUltCompra is not null) { <span class="r5-chip r5-chip--suave">Últ. compra @($"{_infoProd.FechaUltCompra:dd/MM/yy}")</span> }
+                            @if (_infoProd.FechaUltCompraAlm is not null) { <span class="r5-chip r5-chip--suave">Últ. compra almacén @($"{_infoProd.FechaUltCompraAlm:dd/MM/yy}")</span> }
+                        </div>
+                    }
                     <div class="r5-fila">
                         <div class="r5-campo" style="flex:1">
                             <label for="cantPedCli">Cantidad</label>
@@ -226,9 +239,9 @@
                                 {
                                     @foreach (var (texto, estado, peligro) in AccionesLinea(l))
                                     {
-                                        <button class="r5-btn r5-btn--sm @(peligro ? "r5-btn--peligro" : "r5-btn--secundario")"
+                                        <button class="r5-btn r5-btn--sm @(peligro ? "r5-btn--peligro" : Armada(l, estado) ? "r5-btn--primario" : "r5-btn--secundario")"
                                                 disabled="@_operando" @onclick="() => CambiarEstadoAsync(l, estado)">
-                                            @texto
+                                            @(Armada(l, estado) ? "¿Seguro?" : texto)
                                         </button>
                                     }
                                 }
@@ -351,6 +364,11 @@
             _cantidad = 1;
             _obsLinea = "";
             _editLinea = 0;
+            // Ficha del producto (PVP, stock, U/C, últimas compras): los mismos datos que
+            // la ficha del selector de R3 (PROC_EanProdInfo_Select). Mejor esfuerzo.
+            _infoProd = null;
+            var info = await Productos.GetInfoAsync(_prodSel.Prod, Sesion.Usuario.Almacen.CodAlm);
+            if (info.Ok) _infoProd = info.Datos;
         }
         finally
         {
@@ -359,6 +377,8 @@
             await JS.InvokeVoidAsync("r5.seleccionar", "cantPedCli");
         }
     }
+
+    private Producto? _infoProd;
 
     // ---- Catálogo Programa → Tecla Madisa → Producto ----
     private bool _catalogoAbierto;
@@ -462,6 +482,9 @@
     {
         if (_operando || _prodSel is null || _cantidad <= 0) return;
         if (_cantidad >= 10000) { MostrarError($"Cantidad {_cantidad} no valida: ¿has escaneado un codigo en el campo de cantidad?"); return; }
+        // R3 rechaza fracciones si el producto no admite decimales (línea 988).
+        if (!_prodSel.DecimalesEnCant && _cantidad % 1 != 0)
+        { MostrarError($"{_prodSel.DescProd} solo admite cantidades enteras."); return; }
 
         _operando = true;
         _aviso = "";
@@ -507,20 +530,36 @@
 
     // ---- Operativa de línea con pedido en curso (pastillas por estado) ----
 
+    // Transiciones EXACTAS de R3 (17_PedidoClienteCentral:1181/2164): Pendiente→
+    // Preparar|No disp; Preparación y Reparto→Entregar|Reabrir; No disp→Reabrir.
     private static IEnumerable<(string Texto, byte Estado, bool Peligro)> AccionesLinea(PedidoClienteLin l)
     {
         switch (l.Estado)
         {
             case 0: yield return ("Preparar", 1, false); yield return ("No disp.", 4, true); break;
-            case 1: yield return ("A reparto", 2, false); yield return ("No disp.", 4, true); break;
-            case 2: yield return ("Entregar", 3, false); break;
+            case 1: yield return ("Entregar", 3, false); yield return ("Reabrir", 0, false); break;
+            case 2: yield return ("Entregar", 3, false); yield return ("Reabrir", 0, false); break;
             case 4: yield return ("Reabrir", 0, false); break;
         }
     }
 
+    private bool _horaFueraAceptada;
+
+    // Confirmación de Entregar/No disp/Reabrir en dos toques (los Sí/No de R3).
+    private (int Linea, byte Estado)? _accionArmada;
+    private bool Armada(PedidoClienteLin l, byte estado)
+        => _accionArmada is { } a && a.Linea == l.Linea && a.Estado == estado;
+
     private async Task CambiarEstadoAsync(PedidoClienteLin l, byte estado)
     {
         if (_operando) return;
+        if (estado is 3 or 4 or 0 && !Armada(l, estado))
+        {
+            _accionArmada = (l.Linea, estado);
+            return;
+        }
+        _accionArmada = null;
+
         _operando = true;
         _aviso = "";
         try
@@ -541,7 +580,18 @@
     {
         if (_operando || _cab is null) return;
         if (_edNombre.Trim().Length == 0) { MostrarError("Falta el nombre del cliente."); return; }
-        if (!long.TryParse(_edTelefono.Trim(), out long tel) || tel <= 0) { MostrarError("Teléfono no válido."); return; }
+        // R3 exige exactamente 9 dígitos (línea 683).
+        if (_edTelefono.Trim().Length != 9 || !long.TryParse(_edTelefono.Trim(), out long tel) || tel <= 0)
+        { MostrarError("El teléfono debe tener exactamente 9 dígitos."); return; }
+        // Horario habitual 8-21 (R3 694): fuera de rango pide confirmación en dos toques.
+        if (_edHora.Hour is < 8 or > 21 && !_horaFueraAceptada)
+        {
+            _horaFueraAceptada = true;
+            _tipoAviso = "aviso";
+            _aviso = $"La hora de entrega ({_edHora:HH\\:mm}) está fuera del horario habitual (8-21). Pulsa «Guardar» de nuevo para confirmar.";
+            return;
+        }
+        _horaFueraAceptada = false;
 
         _operando = true;
         _aviso = "";

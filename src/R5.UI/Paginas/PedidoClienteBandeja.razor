@@ -4,6 +4,7 @@
    cliente/teléfono/nº) y "Preparar" (bandeja del preparador a nivel de línea, con
    ámbito A-preparar/Mis-pedidos y atrasados en rojo). *@
 @page "/pedidoCliente"
+@implements IDisposable
 @inject PedidoClienteService Pedidos
 @inject SesionUsuario Sesion
 @inject NavigationManager Nav
@@ -14,7 +15,9 @@
 
     <div class="r5-fila" style="flex-wrap: wrap;">
         <div class="r5-segmento">
-            <button class="@(!_verBandeja ? "activo" : "")" @onclick="() => CambiarVistaAsync(false)" disabled="@_cargando">Pedidos</button>
+            <button class="@(!_verBandeja ? "activo" : "")" @onclick="() => CambiarVistaAsync(false)" disabled="@_cargando">
+                Pedidos @(_noDisponibles > 0 ? $"⚠{_noDisponibles} no disp." : "")
+            </button>
             <button class="@(_verBandeja ? "activo" : "")" @onclick="() => CambiarVistaAsync(true)" disabled="@_cargando">Preparar @(_atrasadas > 0 ? $"⚠{_atrasadas}" : "")</button>
         </div>
         <button class="r5-btn r5-btn--fantasma" @onclick="CargarAsync" disabled="@_cargando">Actualizar</button>
@@ -30,12 +33,25 @@
     @if (!_verBandeja)
     {
         <div class="r5-tarjeta r5-fila" style="flex-wrap: wrap; align-items: flex-end;">
-            <div class="r5-segmento">
-                <button class="@(_estadoFiltro == -1 ? "activo" : "")" @onclick="() => FiltrarEstadoAsync(-1)" disabled="@_cargando">Todos</button>
-                <button class="@(_estadoFiltro == 0 ? "activo" : "")" @onclick="() => FiltrarEstadoAsync(0)" disabled="@_cargando">Abiertos</button>
-                <button class="@(_estadoFiltro == 100 ? "activo" : "")" @onclick="() => FiltrarEstadoAsync(100)" disabled="@_cargando">En curso</button>
-                <button class="@(_estadoFiltro == 4 ? "activo" : "")" @onclick="() => FiltrarEstadoAsync(4)" disabled="@_cargando">Entregados</button>
+            @* Filtro por los 6 estados reales del documento (combo Estado de R3). *@
+            <div class="r5-campo" style="min-width: 190px;">
+                <label for="estadoDocFiltro">Estado</label>
+                <select id="estadoDocFiltro" class="r5-select" @bind="_estadoFiltro" @bind:after="CargarAsync">
+                    <option value="-1">Todos</option>
+                    <option value="100">En curso (1-3)</option>
+                    <option value="0">Abierto</option>
+                    <option value="1">Enviado</option>
+                    <option value="2">En preparación</option>
+                    <option value="3">En reparto</option>
+                    <option value="4">Entregado</option>
+                    <option value="5">Anulado</option>
+                </select>
             </div>
+            @* Toggle "ver otras tiendas" (almFiltro -1 de R3). *@
+            <label class="r5-fila" style="gap: var(--esp-2); cursor: pointer; align-self: flex-end; padding-bottom: 8px;">
+                <input type="checkbox" @bind="_todasTiendas" @bind:after="CargarAsync" disabled="@_cargando" />
+                <span>Ver otras tiendas</span>
+            </label>
             <form class="r5-buscador" style="flex:1; min-width: 260px;" @onsubmit="BuscarAsync">
                 <input id="busquedaPedCli" class="r5-input" type="text"
                        placeholder="Cliente, teléfono o nº de pedido"
@@ -62,16 +78,23 @@
         {
             <ListaPaginada Items="_pedidos" Context="p">
                 <Fila>
-                    <button @key="p.Pedido" class="r5-doc" @onclick="() => Abrir(p.Pedido)">
+                    @* Resaltado de R3: entrega de HOY en negrita, vencida en rojo. *@
+                    <button @key="p.Pedido" class="r5-doc" @onclick="() => Abrir(p.Pedido)"
+                            style="@EstiloEntrega(p)">
                         <Icono Nombre="usuario" Clase="r5-modulo__icono" />
                         <span class="r5-doc__principal">
                             <span class="r5-doc__titulo">@(p.NombreCliente.Length > 0 ? p.NombreCliente : $"Pedido {p.Pedido}")</span>
                             <span class="r5-doc__detalle">
                                 Nº @p.Pedido · @FormatearTel(p.Telefono)
                                 @(p.FechaHoraEntrega is null ? "" : $" · entrega {p.FechaHoraEntrega:dd/MM HH:mm}")
+                                @(p.Fecha is null ? "" : $" · creado {p.Fecha:dd/MM}")
                             </span>
                         </span>
                         <span class="r5-doc__derecha">
+                            @if (p.NumEntregadas > 0 && p.Lineas > 0)
+                            {
+                                <span class="r5-chip r5-chip--suave">@p.NumEntregadas de @p.Lineas</span>
+                            }
                             <span class="r5-badge @(p.Abierto ? "r5-badge--abierto" : p.Vivo ? "r5-badge--neutro" : "r5-badge--cerrado")">
                                 @p.DescEstado
                             </span>
@@ -83,14 +106,35 @@
     }
     else
     {
-        <div class="r5-tarjeta r5-fila" style="flex-wrap: wrap;">
+        <div class="r5-tarjeta r5-fila" style="flex-wrap: wrap; align-items: flex-end;">
             <div class="r5-segmento">
                 <button class="@(_ambito == 0 ? "activo" : "")" @onclick="() => CambiarAmbitoAsync(0)" disabled="@_cargando">A preparar</button>
                 <button class="@(_ambito == 1 ? "activo" : "")" @onclick="() => CambiarAmbitoAsync(1)" disabled="@_cargando">Mis pedidos</button>
             </div>
-            <span class="r5-texto-suave r5-texto-sm">
+            @* Combo Entrega de R3: Todas / Hoy / Hasta mañana / Próximos 7 días. *@
+            <div class="r5-campo" style="min-width: 170px;">
+                <label for="entregaFiltro">Entrega</label>
+                <select id="entregaFiltro" class="r5-select" @bind="_entregaFiltro" @bind:after="CargarAsync">
+                    <option value="0">Todas</option>
+                    <option value="1">Hoy</option>
+                    <option value="2">Hasta mañana</option>
+                    <option value="7">Próximos 7 días</option>
+                </select>
+            </div>
+            @* Filtro de estado de línea (combo Estado de R3). *@
+            <div class="r5-campo" style="min-width: 170px;">
+                <label for="estadoLinFiltro">Estado</label>
+                <select id="estadoLinFiltro" class="r5-select" @bind="_estadoLinFiltro" @bind:after="CargarAsync">
+                    <option value="-1">En curso</option>
+                    <option value="0">Pendiente</option>
+                    <option value="1">En preparación</option>
+                    <option value="2">En reparto</option>
+                    <option value="3">Entregado</option>
+                    <option value="4">No disponible</option>
+                </select>
+            </div>
+            <span class="r5-texto-suave r5-texto-sm" style="padding-bottom: 8px;">
                 @(_ambito == 0 ? "Líneas que este almacén debe preparar." : "Líneas de los pedidos que tomó este almacén.")
-                Ordenadas por fecha de entrega.
             </span>
         </div>
 
@@ -116,7 +160,7 @@
                         @foreach (var l in _lineas)
                         {
                             <tr @key="@($"{l.Pedido}-{l.Linea}")">
-                                <td style="@(l.Atrasada ? "color: var(--c-error); font-weight: 600;" : "")">
+                                <td style="@(l.Atrasada ? "color: var(--c-error); font-weight: 600;" : EsHoy(l.FechaHoraEntrega) ? "font-weight: 700;" : "")">
                                     @l.FechaHoraEntrega?.ToString("dd/MM HH:mm")@(l.Atrasada ? " · ATRASADO" : "")
                                 </td>
                                 <td>@l.DescProd</td>
@@ -125,11 +169,13 @@
                                 <td><button class="r5-btn r5-btn--fantasma r5-btn--sm" @onclick="() => Abrir(l.Pedido)">@l.Pedido</button></td>
                                 <td><span class="r5-badge r5-badge--neutro">@l.DescEstado</span></td>
                                 <td class="num">
-                                    @foreach (var (texto, estado, peligro) in AccionesLinea(l))
+                                    @foreach (var (texto, estado, peligro) in AccionesLinea(l, _ambito))
                                     {
-                                        <button class="r5-btn r5-btn--sm @(peligro ? "r5-btn--peligro" : "r5-btn--secundario")"
+                                        @* Confirmación en dos toques (los Sí/No de R3): el primer toque arma
+                                           la acción y el botón pregunta; el segundo la ejecuta. *@
+                                        <button class="r5-btn r5-btn--sm @(peligro ? "r5-btn--peligro" : Armada(l, estado) ? "r5-btn--primario" : "r5-btn--secundario")"
                                                 disabled="@_operando" @onclick="() => OperarAsync(l, estado)">
-                                            @texto
+                                            @(Armada(l, estado) ? "¿Seguro?" : texto)
                                         </button>
                                     }
                                 </td>
@@ -151,28 +197,51 @@
     private int _estadoFiltro = -1;   // -1 todos; 100 = "en curso" (1..3, filtrado en cliente)
     private string _busqueda = "";
     private int _ambito;              // 0 A preparar, 1 Mis pedidos
+    private int _entregaFiltro = 7;   // 0 todas, 1 hoy, 2 hasta mañana, 7 próximos 7 días
+    private int _estadoLinFiltro = -1;
+    private bool _todasTiendas;
     private int _atrasadas;
+    private int _noDisponibles;       // productos de MIS pedidos marcados No disponible (aviso R3)
 
     private List<PedidoClienteCab> _pedidos = new();
     private List<PedidoClienteLin> _lineas = new();
+
+    // Acción armada pendiente de confirmar (dos toques).
+    private (int Pedido, int Linea, byte Estado)? _armada;
+    private bool Armada(PedidoClienteLin l, byte estado)
+        => _armada is { } a && a.Pedido == l.Pedido && a.Linea == l.Linea && a.Estado == estado;
+
+    // Refresco automático cada 90 s cuando no hay operación en curso (tmrAuto de R3).
+    private readonly System.Threading.PeriodicTimer _timer = new(TimeSpan.FromSeconds(90));
 
     protected override async Task OnInitializedAsync()
     {
         // El tipo de almacén solo decide la pantalla inicial (como R3): almacén → bandeja.
         _verBandeja = Sesion.Usuario?.Almacen.Tipo != 0;
         await CargarAsync();
+        _ = RefrescoAutomaticoAsync();
     }
+
+    private async Task RefrescoAutomaticoAsync()
+    {
+        try
+        {
+            while (await _timer.WaitForNextTickAsync())
+            {
+                if (_cargando || _operando || _armada is not null) continue;
+                await InvokeAsync(CargarAsync);
+            }
+        }
+        catch (OperationCanceledException) { /* la página se cerró */ }
+    }
+
+    public void Dispose() => _timer.Dispose();
 
     private Task CambiarVistaAsync(bool bandeja)
     {
         if (_verBandeja == bandeja) return Task.CompletedTask;
         _verBandeja = bandeja;
-        return CargarAsync();
-    }
-
-    private Task FiltrarEstadoAsync(int estado)
-    {
-        _estadoFiltro = estado;
+        _armada = null;
         return CargarAsync();
     }
 
@@ -180,6 +249,7 @@
     {
         if (_ambito == ambito) return Task.CompletedTask;
         _ambito = ambito;
+        _armada = null;
         return CargarAsync();
     }
 
@@ -195,8 +265,16 @@
             short alm = Sesion.Usuario!.Almacen.CodAlm;
             if (_verBandeja)
             {
-                // Lo atrasado siempre visible: sin fecha de inicio y hasta +7 días (como R3).
-                var r = await Pedidos.GetBandejaAsync(alm, _ambito, null, DateTime.Today.AddDays(7));
+                // Rango de entrega según el combo (R3): lo atrasado siempre entra
+                // porque no se acota la fecha de inicio.
+                DateTime? hasta = _entregaFiltro switch
+                {
+                    1 => DateTime.Today.AddDays(1).AddSeconds(-1),
+                    2 => DateTime.Today.AddDays(2).AddSeconds(-1),
+                    7 => DateTime.Today.AddDays(7),
+                    _ => null
+                };
+                var r = await Pedidos.GetBandejaAsync(alm, _ambito, null, hasta, _estadoLinFiltro);
                 if (!r.Ok) { _error = r.Error; _lineas = new(); return; }
                 _lineas = (r.Datos ?? new())
                     .OrderBy(l => l.FechaHoraEntrega ?? DateTime.MaxValue)
@@ -217,32 +295,45 @@
                 if (b.Length >= 8 && long.TryParse(b, out long tel)) telefono = tel;
                 else cliente = b;
 
-                var r = await Pedidos.GetListaAsync(alm, _estadoFiltro is -1 or 100 ? -1 : _estadoFiltro,
+                // "Ver otras tiendas" = almacén -1 (todas), como R3.
+                short almFiltro = _todasTiendas ? (short)-1 : alm;
+                var r = await Pedidos.GetListaAsync(almFiltro, _estadoFiltro is -1 or 100 ? -1 : _estadoFiltro,
                     cliente, telefono);
                 if (!r.Ok) { _error = r.Error; _pedidos = new(); return; }
                 _pedidos = r.Datos ?? new();
                 if (_estadoFiltro == 100)
                     _pedidos = _pedidos.Where(p => p.EstadoDoc is >= 1 and <= 3).ToList();
 
-                // Contador de avisos del preparador para la pestaña (como el menú de R3).
+                // Contadores de avisos para las pestañas (menú de R3): atrasadas del
+                // preparador y "no disponible" en MIS pedidos (aviso al mostrador).
                 var bandeja = await Pedidos.GetBandejaAsync(alm, 0, null, DateTime.Today.AddDays(7));
                 if (bandeja.Ok) _atrasadas = (bandeja.Datos ?? new()).Count(l => l.Atrasada);
+                var misNoDisp = await Pedidos.GetBandejaAsync(alm, 1, null, null, 4);
+                if (misNoDisp.Ok) _noDisponibles = (misNoDisp.Datos ?? new()).Count;
             }
         }
         finally
         {
             _cargando = false;
+            StateHasChanged();
         }
     }
 
-    // Acciones por estado de línea (pastillas de R3): el estado habilita, nada más.
-    private static IEnumerable<(string Texto, byte Estado, bool Peligro)> AccionesLinea(PedidoClienteLin l)
+    // Acciones por estado de línea, transiciones EXACTAS de R3 (17_PedidoClienteCentral
+    // 1181/2164): Pendiente→Preparar|No disp; Preparación y Reparto→Entregar|Reabrir;
+    // No disp→Reabrir. En "Mis pedidos" el mostrador solo entrega (R3 oculta el resto).
+    private static IEnumerable<(string Texto, byte Estado, bool Peligro)> AccionesLinea(PedidoClienteLin l, int ambito)
     {
+        if (ambito == 1)
+        {
+            if (l.Estado is 1 or 2) yield return ("Entregar", 3, false);
+            yield break;
+        }
         switch (l.Estado)
         {
             case 0: yield return ("Preparar", 1, false); yield return ("No disp.", 4, true); break;
-            case 1: yield return ("A reparto", 2, false); yield return ("No disp.", 4, true); break;
-            case 2: yield return ("Entregar", 3, false); break;
+            case 1: yield return ("Entregar", 3, false); yield return ("Reabrir", 0, false); break;
+            case 2: yield return ("Entregar", 3, false); yield return ("Reabrir", 0, false); break;
             case 4: yield return ("Reabrir", 0, false); break;
         }
     }
@@ -250,6 +341,16 @@
     private async Task OperarAsync(PedidoClienteLin l, byte estado)
     {
         if (_operando) return;
+
+        // Entregar, No disponible y Reabrir piden confirmación (Sí/No de R3): el
+        // primer toque arma; Preparar ejecuta directo, como R3.
+        if (estado is 3 or 4 or 0 && !Armada(l, estado))
+        {
+            _armada = (l.Pedido, l.Linea, estado);
+            return;
+        }
+        _armada = null;
+
         _operando = true;
         _error = "";
         try
@@ -265,6 +366,15 @@
     }
 
     private void Abrir(int pedido) => Nav.NavigateTo($"/pedidoCliente/{pedido}");
+
+    private static bool EsHoy(DateTime? f) => f is not null && f.Value.Date == DateTime.Today;
+
+    private static string EstiloEntrega(PedidoClienteCab p)
+    {
+        if (p.FechaHoraEntrega is null || !p.Vivo) return "";
+        if (p.FechaHoraEntrega < DateTime.Now) return "border-left: 4px solid var(--c-error);";
+        return EsHoy(p.FechaHoraEntrega) ? "border-left: 4px solid var(--c-primario);" : "";
+    }
 
     private static string FormatearTel(long tel)
         => tel <= 0 ? "sin teléfono" : System.Text.RegularExpressions.Regex.Replace(tel.ToString(), @"(\d{3})(?=\d)", "$1 ");

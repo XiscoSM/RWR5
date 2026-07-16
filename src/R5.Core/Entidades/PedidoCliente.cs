@@ -39,6 +39,8 @@ public sealed class PedidoClienteCab
     public string EstadoDesc { get; set; } = "";
     public string DescAlm { get; set; } = "";
     public int Lineas { get; set; }
+    /// <summary>Líneas ya entregadas (progreso «Entregado X de Y» de R3); 0 si el proc no lo devuelve.</summary>
+    public int NumEntregadas { get; set; }
 
     public string DescEstado => EstadoDesc.Length > 0 ? EstadoDesc : EstadoPedidoCliente.DescDoc(EstadoDoc);
     public bool Abierto => EstadoDoc == EstadoPedidoCliente.Abierto;

@@ -24,18 +24,27 @@
                    @bind="_nombre" disabled="@_creando" />
         </div>
         <div class="r5-campo">
-            <label for="altaTel">Teléfono</label>
-            <input id="altaTel" class="r5-input r5-input--numero" type="text" inputmode="numeric" maxlength="15"
+            <label for="altaTel">Teléfono (9 dígitos)</label>
+            <input id="altaTel" class="r5-input r5-input--numero" type="text" inputmode="numeric" maxlength="9"
                    @bind="_telefono" disabled="@_creando" />
         </div>
         <div class="r5-campo">
-            <label for="altaAlm">Almacén central que lo prepara</label>
+            <label for="altaAlm">Almacén que lo prepara (el propio = reserva en tienda)</label>
             <div class="r5-fila">
                 <input id="altaAlm" class="r5-input r5-input--numero" type="text" inputmode="numeric"
                        style="max-width: 120px;" @bind="_almCentralTexto" @bind:event="oninput" disabled="@_creando" />
                 <button type="button" class="r5-btn r5-btn--secundario" @onclick="ValidarAlmAsync" disabled="@_creando">Comprobar</button>
                 <span class="r5-texto-suave">@_nombreAlmCentral</span>
+                @if (EsReserva)
+                {
+                    <span class="r5-chip" style="background: var(--c-exito-fondo); color: var(--c-exito);">⚑ RESERVA EN TIENDA</span>
+                }
             </div>
+        </div>
+        <div class="r5-campo">
+            <label for="altaEmpleado">Empleado que atiende</label>
+            <input id="altaEmpleado" class="r5-input r5-input--numero" type="text" inputmode="numeric" maxlength="9"
+                   style="max-width: 140px;" @bind="_empleadoTexto" disabled="@_creando" />
         </div>
         <div class="r5-fila">
             <div class="r5-campo" style="flex:1">
@@ -67,17 +76,24 @@
     private string _telefono = "";
     private string _almCentralTexto = "";
     private string _nombreAlmCentral = "";
+    private string _empleadoTexto = "";
     private DateTime _fechaEntrega = DateTime.Today.AddDays(1);
     private TimeOnly _horaEntrega = new(12, 0);
     private string _observaciones = "";
     private bool _creando;
     private string _error = "";
+    // Avisos de VerificarAlmCentral confirmables en un segundo toque (los Sí/No de R3).
+    private bool _avisosCentralAceptados;
+
+    private bool EsReserva => short.TryParse(_almCentralTexto.Trim(), out short a)
+        && a == Sesion.Usuario?.Almacen.CodAlm;
 
     protected override void OnInitialized()
     {
-        // Central por defecto: el que el almacén usa para emitir pedidos, si lo tiene.
-        byte central = Sesion.Usuario?.Almacen.CentroDistEmitirPedidos ?? 0;
-        if (central > 0) _almCentralTexto = central.ToString();
+        // Prellenado como R3 (línea 785): el PROPIO almacén (reserva en tienda por
+        // defecto); el mostrador lo cambia si el pedido va a un central.
+        _almCentralTexto = (Sesion.Usuario?.Almacen.CodAlm ?? 0) is var propio and > 0 ? propio.ToString() : "";
+        _empleadoTexto = (Sesion.Usuario?.CodUsuario ?? 0) is var emp and > 0 ? emp.ToString() : "";
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -89,6 +105,7 @@
     private async Task ValidarAlmAsync()
     {
         _nombreAlmCentral = "";
+        _avisosCentralAceptados = false;
         if (!short.TryParse(_almCentralTexto.Trim(), out short alm) || alm <= 0) return;
         var r = await Almacenes.GetAsync(alm);
         _nombreAlmCentral = r.Ok && r.Datos is { CodAlm: > 0 } ? r.Datos.DescAlm : "(no existe)";
@@ -100,26 +117,57 @@
         _error = "";
 
         if (_nombre.Trim().Length == 0) { _error = "Falta el nombre del cliente."; return; }
-        if (!long.TryParse(_telefono.Trim(), out long tel) || tel <= 0) { _error = "Teléfono no válido (solo números)."; return; }
+        // R3 exige exactamente 9 dígitos (línea 811).
+        if (_telefono.Trim().Length != 9 || !long.TryParse(_telefono.Trim(), out long tel) || tel <= 0)
+        { _error = "El teléfono debe tener exactamente 9 dígitos."; return; }
         if (!short.TryParse(_almCentralTexto.Trim(), out short almCentral) || almCentral <= 0)
-        { _error = "Falta el almacén central que preparará el pedido."; return; }
+        { _error = "Falta el almacén que preparará el pedido."; return; }
+        if (!int.TryParse(_empleadoTexto.Trim(), out int empleado) || empleado <= 0)
+        { _error = "Falta el nº de empleado que atiende."; return; }
         DateTime entrega = _fechaEntrega.Date + _horaEntrega.ToTimeSpan();
         if (entrega <= DateTime.Now) { _error = "La entrega debe ser posterior a ahora."; return; }
 
         _creando = true;
         try
         {
-            // El almacén central debe existir (la guarda VerificarAlmCentral de R3).
+            // VerificarAlmCentral de R3: el almacén debe existir; se avisa (confirmable)
+            // si no es de tipo central o si su zona no coincide con la de la tienda.
+            // El PROPIO almacén es válido: reserva en tienda.
             var alm = await Almacenes.GetAsync(almCentral);
             if (!alm.Ok || alm.Datos is null || alm.Datos.CodAlm <= 0)
             { _error = $"El almacén {almCentral} no existe."; return; }
-            if (almCentral == Sesion.Usuario!.Almacen.CodAlm)
-            { _error = "El central no puede ser el propio almacén."; return; }
+            _nombreAlmCentral = alm.Datos.DescAlm;
+
+            if (!EsReserva && !_avisosCentralAceptados)
+            {
+                var avisos = new List<string>();
+                if (alm.Datos.Tipo != 1)
+                    avisos.Add($"el almacén {almCentral} ({alm.Datos.DescAlm}) no es un central");
+                byte zonaCentral = alm.Datos.CentroDistRecibirPedidos;
+                byte zonaTienda = Sesion.Usuario!.Almacen.CentroDistRecibirPedidos;
+                if (zonaCentral > 0 && zonaTienda > 0 && zonaCentral != zonaTienda)
+                    avisos.Add("su zona no coincide con la de tu almacén");
+                // Hora fuera del horario habitual 8-21 (R3 820).
+                if (_horaEntrega.Hour is < 8 or > 21)
+                    avisos.Add($"la hora de entrega ({_horaEntrega:HH\\:mm}) está fuera del horario habitual (8-21)");
+                if (avisos.Count > 0)
+                {
+                    _avisosCentralAceptados = true;
+                    _error = $"Atención: {string.Join(" y ", avisos)}. Pulsa «Crear» de nuevo para continuar igualmente.";
+                    return;
+                }
+            }
+            else if (EsReserva && _horaEntrega.Hour is < 8 or > 21 && !_avisosCentralAceptados)
+            {
+                _avisosCentralAceptados = true;
+                _error = $"La hora de entrega ({_horaEntrega:HH\\:mm}) está fuera del horario habitual (8-21). Pulsa «Crear» de nuevo para confirmar.";
+                return;
+            }
 
             var r = await Pedidos.PostCabAsync(new PedidoClienteCabDTO
             {
-                Empleado = Sesion.Usuario.CodUsuario,
-                Alm = Sesion.Usuario.Almacen.CodAlm,
+                Empleado = empleado,
+                Alm = Sesion.Usuario!.Almacen.CodAlm,
                 AlmCentral = almCentral,
                 Telefono = tel,
                 NombreCliente = _nombre.Trim(),
