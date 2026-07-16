@@ -20,6 +20,13 @@
                 <input id="cifCliente" class="r5-input" type="text" maxlength="9" autofocus
                        @bind="_cif" @bind:event="oninput" disabled="@_ocupado" />
             </div>
+            @* Unidad Tramitadora FACe (organismos oficiales): distingue clientes con el
+               mismo CIF por unidad, como R3 (bClienteUnidTramit). *@
+            <div class="r5-campo" style="min-width: 180px;">
+                <label for="unidTramit">Unidad tramitadora (opcional)</label>
+                <input id="unidTramit" class="r5-input" type="text" maxlength="20"
+                       @bind="_unidTramitadora" disabled="@_ocupado" />
+            </div>
             <button class="r5-btn r5-btn--secundario" @onclick="BuscarClienteAsync"
                     disabled="@(_ocupado || _cif.Trim().Length == 0)">Buscar</button>
             @if (_cliente is not null)
@@ -64,6 +71,31 @@
                     <label>Observaciones para imprimir en la factura (opcional)</label>
                     <input class="r5-input" type="text" maxlength="100" @bind="_ficha.ObservacionPrint" />
                 </div>
+                @if (Sesion.Usuario!.PerfilClienteTpv > 1)
+                {
+                    @* Anotación interna del cliente (Observaciones ≠ ObservacionPrint):
+                       solo con perfil > 1, como R3 (tbAnotacionCli). *@
+                    <div class="r5-campo">
+                        <label>Anotación interna del cliente</label>
+                        <input class="r5-input" type="text" maxlength="100" @bind="_ficha.Observaciones" />
+                    </div>
+                }
+                @* Tipo de facturación automática (TipoEnvioFact de R3): 0 manual,
+                   1 factura por ticket, 4 agrupación mensual de tickets por mail. *@
+                <div class="r5-campo" style="max-width: 380px;">
+                    <label for="tipoEnvioFact">Facturación automática</label>
+                    <select id="tipoEnvioFact" class="r5-select" @bind="_ficha.TipoEnvioFact">
+                        <option value="0">Manual (sin envío automático)</option>
+                        <option value="1">Factura por cada ticket (envío por mail)</option>
+                        <option value="4">Agrupación mensual de tickets (mail)</option>
+                    </select>
+                    @if (_ficha.TipoEnvioFact != 0 && _ficha.Email.Trim().Length == 0)
+                    {
+                        <span class="r5-texto-suave r5-texto-sm" style="color: var(--c-peligro);">
+                            La facturación automática necesita un email en la ficha.
+                        </span>
+                    }
+                </div>
                 <div class="r5-fila">
                     <button type="submit" class="r5-btn r5-btn--primario" disabled="@_ocupado">
                         @(_ficha.Cliente > 0 ? "Guardar cliente" : "Dar de alta el cliente")
@@ -84,6 +116,11 @@
                 <h3 style="margin:0">Tickets a facturar @(_preFactura > 0 ? $"· Prefactura {_preFactura}" : "")</h3>
                 @if (_preFactura > 0)
                 {
+                    <div class="r5-campo" style="min-width: 240px; margin-left:auto;">
+                        <label for="obsPreFact">Observaciones de la factura (opcional)</label>
+                        <input id="obsPreFact" class="r5-input" type="text" maxlength="100"
+                               @bind="_obsPrefactura" disabled="@_ocupado" />
+                    </div>
                     <BotonConfirmar Texto="FACTURAR"
                                     Pregunta="@($"¿Emitir la factura de {_cliente.NombreCompleto} con los tickets añadidos? Genera la factura fiscal.")"
                                     TextoOcupado="Facturando…" Ocupado="@_ocupado"
@@ -96,15 +133,101 @@
                        @bind="_eanTicket" @bind:event="oninput" disabled="@_ocupado" />
                 <button type="submit" class="r5-btn r5-btn--secundario"
                         disabled="@(_ocupado || string.IsNullOrWhiteSpace(_eanTicket))">Añadir</button>
+                <button type="button" class="r5-btn r5-btn--fantasma" @onclick="() => _ticketManualAbierto = !_ticketManualAbierto">Ticket manual</button>
             </form>
+
+            @* Tickets añadidos en esta sesión: se pueden quitar de la prefactura o ver su
+               detalle (BborrarTicket / InfoTicket de R3). *@
+            @if (_ticketsPrefactura.Count > 0)
+            {
+                <div class="r5-tabla-scroll">
+                    <table class="r5-tabla">
+                        <thead><tr><th>Ticket</th><th>Tienda</th><th>Caja</th><th>Nº</th><th></th></tr></thead>
+                        <tbody>
+                            @foreach (var t in _ticketsPrefactura)
+                            {
+                                <tr @key="t">
+                                    <td class="num">@t</td>
+                                    <td class="num">@TiendaDeTicket(t)</td>
+                                    <td class="num">@CajaDeTicket(t)</td>
+                                    <td class="num">@NumDeTicket(t)</td>
+                                    <td class="num">
+                                        <button class="r5-btn r5-btn--fantasma r5-btn--sm" @onclick="() => VerTicketAsync(t)" disabled="@_ocupado">Detalle</button>
+                                        <button class="r5-btn r5-btn--fantasma r5-btn--sm" style="color: var(--c-peligro);"
+                                                @onclick="() => QuitarTicketAsync(t)" disabled="@_ocupado">Quitar</button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+
+            @if (_detalleTicket.Count > 0)
+            {
+                <div class="r5-tabla-scroll" style="border: 1px solid var(--c-borde); border-radius: 8px; padding: 8px;">
+                    <table class="r5-tabla">
+                        <thead><tr>@foreach (var c in _detalleTicket[0].Keys) { <th>@c</th> }</tr></thead>
+                        <tbody>
+                            @foreach (var (fila, i) in _detalleTicket.Select((f, i) => (f, i)))
+                            {
+                                <tr @key="i">@foreach (var c in _detalleTicket[0].Keys) { <td>@(fila.TryGetValue(c, out var v) ? v : "")</td> }</tr>
+                            }
+                        </tbody>
+                    </table>
+                    <button class="r5-btn r5-btn--fantasma r5-btn--sm" @onclick="() => _detalleTicket = new()">Cerrar detalle</button>
+                </div>
+            }
+
+            @* Ticket manual de devolución (Button2 de R3): tienda+caja+ticket+fecha
+               componen el EAN; el importe negativo identifica la devolución. *@
+            @if (_ticketManualAbierto)
+            {
+                <form class="r5-fila" style="flex-wrap: wrap; align-items: flex-end;" @onsubmit="AnadirTicketManualAsync">
+                    <div class="r5-campo" style="max-width: 110px;"><label>Tienda</label>
+                        <input class="r5-input r5-input--numero" type="number" @bind="_tmTienda" /></div>
+                    <div class="r5-campo" style="max-width: 110px;"><label>Caja</label>
+                        <input class="r5-input r5-input--numero" type="number" @bind="_tmCaja" /></div>
+                    <div class="r5-campo" style="max-width: 140px;"><label>Ticket</label>
+                        <input class="r5-input r5-input--numero" type="number" @bind="_tmTicket" /></div>
+                    <div class="r5-campo" style="max-width: 170px;"><label>Fecha</label>
+                        <input class="r5-input" type="date" @bind="_tmFecha" /></div>
+                    <div class="r5-campo" style="max-width: 150px;"><label>Importe (negativo)</label>
+                        <input class="r5-input r5-input--numero" type="number" step="0.01" @bind="_tmImporte" /></div>
+                    <button type="submit" class="r5-btn r5-btn--secundario"
+                            disabled="@(_ocupado || _tmTienda <= 0 || _tmCaja <= 0 || _tmTicket <= 0 || _tmImporte >= 0)">Añadir devolución</button>
+                </form>
+            }
+
             <span class="r5-texto-suave r5-texto-sm">Cada ticket escaneado se suma a la prefactura del cliente.</span>
+
+            @* Asignar un ticket suelto al cliente SIN prefactura (basignarTicket de R3):
+               deja el ticket ligado al cliente para su facturación automática/mensual. *@
+            <form class="r5-buscador" @onsubmit="AsignarTicketAsync">
+                <input class="r5-input" type="text" inputmode="numeric"
+                       placeholder="Asignar ticket suelto al cliente (escanea el ticket)"
+                       @bind="_eanAsignar" @bind:event="oninput" disabled="@_ocupado" />
+                <button type="submit" class="r5-btn r5-btn--fantasma"
+                        disabled="@(_ocupado || string.IsNullOrWhiteSpace(_eanAsignar))">Asignar</button>
+            </form>
         </div>
 
         @* ---------- Paso 3: histórico (prefacturas y facturas del cliente) ---------- *@
         <div class="r5-tarjeta r5-columna">
-            <div class="r5-fila">
+            <div class="r5-fila" style="flex-wrap: wrap;">
                 <h3 style="margin:0">Prefacturas y facturas del cliente</h3>
-                <button class="r5-btn r5-btn--fantasma" style="margin-left:auto" @onclick="CargarRelacionAsync" disabled="@_ocupado">Actualizar</button>
+                @if (Sesion.Usuario!.PerfilClienteTpv > 2)
+                {
+                    @* Relación mensual de tickets (brecuperar_tickets de R3, perfil > 2). *@
+                    <div class="r5-campo" style="max-width: 170px; margin-left:auto;">
+                        <label for="finMesRel">Tickets del mes (fin de mes)</label>
+                        <input id="finMesRel" class="r5-input" type="date" @bind="_fechaFinMes" disabled="@_ocupado" />
+                    </div>
+                    <button class="r5-btn r5-btn--secundario" style="align-self: flex-end;"
+                            @onclick="CargarRelacionMesAsync" disabled="@_ocupado">Recuperar mes</button>
+                }
+                <button class="r5-btn r5-btn--fantasma" style="@(Sesion.Usuario!.PerfilClienteTpv > 2 ? "" : "margin-left:auto")"
+                        @onclick="CargarRelacionAsync" disabled="@_ocupado">Actualizar</button>
             </div>
             @if (_relacion.Count == 0)
             {
@@ -139,6 +262,8 @@
                                             {
                                                 <button class="r5-btn r5-btn--fantasma r5-btn--sm" @onclick="() => EnviarMailAsync(numFact)" disabled="@_ocupado">Mail</button>
                                             }
+                                            <button class="r5-btn r5-btn--fantasma r5-btn--sm"
+                                                    @onclick="() => AbrirObservaciones(numFact)" disabled="@_ocupado">Obs.</button>
                                             @if (Sesion.Usuario!.FactTpvAnula)
                                             {
                                                 <button class="r5-btn r5-btn--fantasma r5-btn--sm" style="color: var(--c-peligro);"
@@ -151,6 +276,34 @@
                         </tbody>
                     </table>
                 </div>
+            }
+
+            @if (_facturaObs.Length > 0)
+            {
+                @* Modificar observaciones de una factura registrada (BobservUpdate de R3):
+                   mismo cotejo de fecha e importe que la anulación. *@
+                <form class="r5-columna r5-ancho-form" @onsubmit="GuardarObservacionesAsync" style="border-top: 1px solid var(--c-borde); padding-top: .75rem;">
+                    <h3 style="margin:0">Observaciones de la factura @_facturaObs</h3>
+                    <div class="r5-fila" style="flex-wrap: wrap;">
+                        <div class="r5-campo">
+                            <label for="fechaObsF">Fecha de operación</label>
+                            <input id="fechaObsF" class="r5-input" type="date" @bind="_fechaObs" disabled="@_ocupado" />
+                        </div>
+                        <div class="r5-campo">
+                            <label for="importeObsF">Importe total (€)</label>
+                            <input id="importeObsF" class="r5-input r5-input--numero" type="number" step="0.01"
+                                   @bind="_importeObs" disabled="@_ocupado" />
+                        </div>
+                    </div>
+                    <div class="r5-campo">
+                        <label for="textoObsF">Observaciones</label>
+                        <input id="textoObsF" class="r5-input" type="text" maxlength="100" @bind="_textoObs" disabled="@_ocupado" />
+                    </div>
+                    <div class="r5-fila">
+                        <button type="submit" class="r5-btn r5-btn--primario" disabled="@(_ocupado || _importeObs is null)">Guardar observaciones</button>
+                        <button type="button" class="r5-btn r5-btn--fantasma" @onclick='() => _facturaObs = ""'>Cancelar</button>
+                    </div>
+                </form>
             }
 
             @if (_facturaBorrar.Length > 0)
@@ -194,8 +347,120 @@
 
     private int _preFactura;
     private string _eanTicket = "";
+    private string _unidTramitadora = "";
+    private string _obsPrefactura = "";
     private List<Dictionary<string, string?>> _relacion = new();
     private List<string> _columnasRelacion = new();
+
+    // Tickets añadidos a la prefactura en esta sesión (TablaTickets de R3): permiten
+    // quitar y ver detalle. EAN de ticket = Tienda(4)+Caja(4)+Ticket(6)+Fecha(ddMMyy).
+    private readonly List<string> _ticketsPrefactura = new();
+    private List<Dictionary<string, string?>> _detalleTicket = new();
+
+    private static string TiendaDeTicket(string ean) => ean.Length >= 8 ? ean[..4].TrimStart('0') : "";
+    private static string CajaDeTicket(string ean) => ean.Length >= 8 ? ean[4..8].TrimStart('0') : "";
+    private static string NumDeTicket(string ean) => ean.Length >= 14 ? ean[8..14].TrimStart('0') : "";
+
+    private async Task VerTicketAsync(string ean)
+    {
+        _ocupado = true;
+        try
+        {
+            var r = await Facturas.GetTicketAsync(ean);
+            if (!r.Ok) { MostrarError(r.Error); return; }
+            _detalleTicket = r.Datos ?? new();
+        }
+        finally { _ocupado = false; }
+    }
+
+    private async Task QuitarTicketAsync(string ean)
+    {
+        if (_ocupado || _preFactura <= 0 || ean.Length < 14) return;
+        if (!short.TryParse(ean[..4], out short tienda) || !short.TryParse(ean[4..8], out short caja)
+            || !int.TryParse(ean[8..14], out int num)) { MostrarError("Ticket con formato no reconocido."); return; }
+        _ocupado = true;
+        _aviso = "";
+        try
+        {
+            var r = await Facturas.QuitarTicketAsync(_preFactura, tienda, caja, num);
+            if (!r.Ok) { MostrarError(r.Error); return; }
+            _ticketsPrefactura.Remove(ean);
+            _tipoAviso = "exito";
+            _aviso = $"Ticket {NumDeTicket(ean)} quitado de la prefactura.";
+            await CargarRelacionAsync();
+        }
+        finally { _ocupado = false; }
+    }
+
+    // Ticket manual de devolución (Button2 de R3): compone el EAN y lo añade con el
+    // importe negativo como verificación.
+    private bool _ticketManualAbierto;
+    private short _tmTienda;
+    private short _tmCaja;
+    private int _tmTicket;
+    private DateTime _tmFecha = DateTime.Today;
+    private decimal _tmImporte;
+
+    private async Task AnadirTicketManualAsync()
+    {
+        if (_ocupado || _cliente is null || _tmImporte >= 0) return;
+        string ean = $"{_tmTienda:0000}{_tmCaja:0000}{_tmTicket:000000}{_tmFecha:ddMMyy}";
+        _ocupado = true;
+        _aviso = "";
+        try
+        {
+            var r = await Facturas.AnadirTicketAsync(_preFactura, _cliente.Cliente,
+                Sesion.Usuario!.CodUsuario, ean, _tmImporte);
+            if (!r.Ok) { MostrarError(r.Error); return; }
+            if (r.Datos > 0) _preFactura = r.Datos;
+            _ticketsPrefactura.Add(ean);
+            _ticketManualAbierto = false;
+            _tipoAviso = "exito";
+            _aviso = $"Devolución {_tmTicket} añadida a la prefactura {_preFactura}.";
+            await CargarRelacionAsync();
+        }
+        finally { _ocupado = false; }
+    }
+
+    // Ticket suelto asignado al cliente sin pasar por prefactura (basignarTicket de R3).
+    private string _eanAsignar = "";
+
+    private async Task AsignarTicketAsync()
+    {
+        string ean = _eanAsignar.Trim();
+        if (_ocupado || _cliente is null || ean.Length == 0) return;
+        _ocupado = true;
+        _aviso = "";
+        try
+        {
+            var r = await Facturas.AsignarTicketAsync(ean, _cliente.Cliente);
+            if (!r.Ok) { MostrarError(r.Error); return; }
+            _tipoAviso = "exito";
+            _aviso = $"Ticket {NumDeTicket(ean)} asignado a {_cliente.NombreCompleto}.";
+            _eanAsignar = "";
+        }
+        finally { _ocupado = false; }
+    }
+
+    // Relación mensual de tickets del cliente (fin de mes), perfil > 2.
+    private DateTime _fechaFinMes = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1).AddMonths(1).AddDays(-1);
+
+    private async Task CargarRelacionMesAsync()
+    {
+        if (_cliente is null || !Sesion.Autenticado) return;
+        _ocupado = true;
+        _aviso = "";
+        try
+        {
+            var r = await Facturas.GetRelacionAsync(_cliente.Cliente, Sesion.Usuario!.CodUsuario, _fechaFinMes);
+            if (!r.Ok) { MostrarError(r.Error); return; }
+            _relacion = r.Datos ?? new();
+            _columnasRelacion = _relacion.Count > 0 ? _relacion[0].Keys.ToList() : new();
+            _tipoAviso = "info";
+            _aviso = $"Relación de tickets hasta {_fechaFinMes:dd/MM/yy}: {_relacion.Count} filas.";
+        }
+        finally { _ocupado = false; }
+    }
 
     private async Task BuscarClienteAsync()
     {
@@ -214,7 +479,7 @@
         _preFactura = 0;
         try
         {
-            var r = await Facturas.GetClienteAsync(cif);
+            var r = await Facturas.GetClienteAsync(cif, unidTramitadora: _unidTramitadora.Trim());
             if (r.Ok && r.Datos is { Cliente: > 0 })
             {
                 _cliente = r.Datos;
@@ -248,6 +513,9 @@
     {
         if (_ocupado || !Sesion.Autenticado) return;
         if (_ficha.Nombre.Trim().Length == 0) { MostrarError("Falta el nombre del cliente."); return; }
+        // La facturación automática exige mail en la ficha (rbTicketFact de R3).
+        if (_ficha.TipoEnvioFact != 0 && _ficha.Email.Trim().Length == 0)
+        { MostrarError("La facturación automática necesita un email en la ficha del cliente."); return; }
 
         _ocupado = true;
         _aviso = "";
@@ -281,6 +549,7 @@
                 Sesion.Usuario!.CodUsuario, ean);
             if (!r.Ok) { MostrarError(r.Error); return; }
             if (r.Datos > 0) _preFactura = r.Datos;
+            _ticketsPrefactura.Add(ean);
             _tipoAviso = "exito";
             _aviso = $"Ticket añadido a la prefactura {_preFactura}.";
             _eanTicket = "";
@@ -301,11 +570,13 @@
         _aviso = "";
         try
         {
-            var r = await Facturas.FacturarAsync(_preFactura, Sesion.Usuario!.CodUsuario);
+            var r = await Facturas.FacturarAsync(_preFactura, Sesion.Usuario!.CodUsuario, _obsPrefactura.Trim());
             if (!r.Ok) { MostrarError(r.Error); return; }
             _tipoAviso = "exito";
             _aviso = $"Factura emitida a {_cliente?.NombreCompleto}.";
             _preFactura = 0;
+            _obsPrefactura = "";
+            _ticketsPrefactura.Clear();
             await CargarRelacionAsync();
         }
         finally
@@ -330,6 +601,40 @@
             if (fila.TryGetValue(clave, out var v) && !string.IsNullOrWhiteSpace(v)) return v!;
         }
         return "";
+    }
+
+    // ---- Observaciones de una factura registrada (cotejo fecha+importe como R3) ----
+    private string _facturaObs = "";
+    private DateTime _fechaObs = DateTime.Today;
+    private decimal? _importeObs;
+    private string _textoObs = "";
+
+    private void AbrirObservaciones(string factura)
+    {
+        _facturaObs = factura;
+        _fechaObs = DateTime.Today;
+        _importeObs = null;
+        _textoObs = "";
+        _facturaBorrar = "";
+        _aviso = "";
+    }
+
+    private async Task GuardarObservacionesAsync()
+    {
+        if (_ocupado || _facturaObs.Length == 0 || _importeObs is null || _cliente is null || !Sesion.Autenticado) return;
+        _ocupado = true;
+        _aviso = "";
+        try
+        {
+            var r = await Facturas.PostObservacionesAsync(_facturaObs, _cliente.Cliente,
+                _fechaObs, _importeObs.Value, Sesion.Usuario!.CodUsuario.ToString(), _textoObs.Trim());
+            if (!r.Ok) { MostrarError(r.Error); return; }
+            _tipoAviso = "exito";
+            _aviso = $"Observaciones de la factura {_facturaObs} actualizadas.";
+            _facturaObs = "";
+            await CargarRelacionAsync();
+        }
+        finally { _ocupado = false; }
     }
 
     // ---- Anulación de factura (FactTpvAnula, cotejo fecha+importe como R3) ----

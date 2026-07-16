@@ -34,9 +34,23 @@ public sealed class FacturaTpvService
     public Task<ApiRespuesta<List<Dictionary<string, string?>>>> GetTicketAsync(string eanTicket, CancellationToken ct = default)
         => _api.GetAsync<List<Dictionary<string, string?>>>($"FacturaTpv/Ticket?eanTicket={Uri.EscapeDataString(eanTicket)}", ct);
 
-    /// <summary>GET FacturaTpv/Relacion/{cliente} — prefacturas y facturas del cliente.</summary>
-    public Task<ApiRespuesta<List<Dictionary<string, string?>>>> GetRelacionAsync(int cliente, short usuario, CancellationToken ct = default)
-        => _api.GetAsync<List<Dictionary<string, string?>>>($"FacturaTpv/Relacion/{cliente}?usuario={usuario}", ct);
+    /// <summary>GET FacturaTpv/Relacion/{cliente} — prefacturas y facturas del cliente;
+    /// con fechaFinMes, la relación mensual de tickets (brecuperar_tickets de R3).</summary>
+    public Task<ApiRespuesta<List<Dictionary<string, string?>>>> GetRelacionAsync(int cliente, short usuario, DateTime? fechaFinMes = null, CancellationToken ct = default)
+        => _api.GetAsync<List<Dictionary<string, string?>>>(
+            $"FacturaTpv/Relacion/{cliente}?usuario={usuario}{(fechaFinMes is null ? "" : $"&fechaFinMes={fechaFinMes:yyyy-MM-dd}")}", ct);
+
+    /// <summary>POST FacturaTpv/Ticket/Asignar — asigna un ticket suelto a un cliente.</summary>
+    public Task<ApiRespuesta<int>> AsignarTicketAsync(string eanTicket, int cliente, CancellationToken ct = default)
+        => _api.PostAsync<int>($"FacturaTpv/Ticket/Asignar?eanTicket={Uri.EscapeDataString(eanTicket)}&cliente={cliente}", cuerpo: null, ct);
+
+    /// <summary>POST FacturaTpv/{factura}/Observaciones — modifica las observaciones de
+    /// una factura registrada (cotejo cliente/fecha/importe, como R3).</summary>
+    public Task<ApiRespuesta<int>> PostObservacionesAsync(string factura, int cliente, DateTime fecha, decimal importeTotal, string usuario, string observaciones, CancellationToken ct = default)
+        => _api.PostAsync<int>(
+            $"FacturaTpv/{Uri.EscapeDataString(factura)}/Observaciones?cliente={cliente}&fecha={fecha:yyyy-MM-dd}" +
+            $"&importeTotal={importeTotal.ToString(System.Globalization.CultureInfo.InvariantCulture)}" +
+            $"&usuario={Uri.EscapeDataString(usuario)}&observaciones={Uri.EscapeDataString(observaciones)}", cuerpo: null, ct);
 
     /// <summary>POST FacturaTpv/Facturar/{preFactura} — registra la prefactura como factura.</summary>
     public Task<ApiRespuesta<int>> FacturarAsync(int preFactura, short usuario, string observaciones = "", CancellationToken ct = default)
