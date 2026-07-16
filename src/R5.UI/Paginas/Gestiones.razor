@@ -37,6 +37,12 @@
                 <span class="r5-chip" style="margin-left:auto; background: var(--c-exito-fondo); color: var(--c-exito);">
                     Vacaciones pendientes: @_empleado.DiasVacPend días
                 </span>
+                @* Consulta puntual del saldo de otro empleado (bVacaciones de R3). *@
+                <form class="r5-fila" style="gap: var(--esp-2);" @onsubmit="ConsultarSaldoAsync">
+                    <input class="r5-input r5-input--numero" style="max-width: 120px;" type="text" inputmode="numeric"
+                           placeholder="Otro empleado" @bind="_saldoOtroTexto" disabled="@_ocupado" />
+                    <button type="submit" class="r5-btn r5-btn--fantasma r5-btn--sm" disabled="@_ocupado">Saldo</button>
+                </form>
                 <button class="r5-btn r5-btn--fantasma" @onclick="CambiarEmpleado">Cambiar</button>
             </div>
         </div>
@@ -81,6 +87,14 @@
                 @if (_tipoSolicitud == 15)
                 {
                     <span class="r5-texto-suave r5-texto-sm">Gestión personal: se solicita para ti (@_empleado.Empleado — @_empleado.Nombre).</span>
+                    @if (_idGestionSel == 190)
+                    {
+                        @* Cambio de titular (R3 bcambioTitular): necesita email de contacto en la
+                           ficha de cliente; si no lo tienes, solicita antes el cambio de mail. *@
+                        <span class="r5-texto-suave r5-texto-sm">
+                            Requiere tener email de contacto en tu ficha de cliente; si no lo tienes, solicita antes el «cambio mail contacto».
+                        </span>
+                    }
                 }
                 else
                 {
@@ -350,6 +364,29 @@
             _empleado = respuesta.Datos;
             await CargarCatalogosAsync();
             await CargarAsync();
+        }
+        finally
+        {
+            _ocupado = false;
+        }
+    }
+
+    // Saldo de vacaciones de cualquier empleado (bVacaciones de R3).
+    private string _saldoOtroTexto = "";
+
+    private async Task ConsultarSaldoAsync()
+    {
+        if (_ocupado || !int.TryParse(_saldoOtroTexto.Trim(), out int otro) || otro <= 0) return;
+        _ocupado = true;
+        _aviso = "";
+        try
+        {
+            var r = await ServicioGestiones.GetEmpleadoAsync(otro);
+            if (!r.Ok || r.Datos is null || string.IsNullOrWhiteSpace(r.Datos.Nombre))
+            { MostrarError($"El empleado {otro} no existe."); return; }
+            _tipoAviso = "info";
+            _aviso = $"{r.Datos.Empleado} — {r.Datos.Nombre}: saldo de vacaciones {r.Datos.DiasVacPend} días.";
+            _saldoOtroTexto = "";
         }
         finally
         {

@@ -45,6 +45,18 @@
                 <button class="r5-btn r5-btn--fantasma r5-btn--sm" @onclick="DeshacerAsync" disabled="@(_ocupado || _pilaCambios.Count == 0)">
                     Deshacer (@_pilaCambios.Count)
                 </button>
+                @* tmConfirm de R3: con el candado activo, sobrescribir una celda con
+                   contenido pide un segundo toque. *@
+                <label class="r5-fila" style="gap: var(--esp-2); cursor: pointer;">
+                    <input type="checkbox" @bind="_confirmarCambios" />
+                    <span class="r5-texto-sm">Confirmar cambios</span>
+                </label>
+                @if (_filtroUsuario > 0)
+                {
+                    <button class="r5-btn r5-btn--secundario r5-btn--sm" @onclick="() => _filtroUsuario = 0">
+                        Quitar filtro de empleado
+                    </button>
+                }
             </div>
         </div>
 
@@ -94,6 +106,9 @@
             </div>
             <button class="r5-btn r5-btn--secundario" style="align-self: flex-end;"
                     @onclick="CambiarSeccionAsync" disabled="@(_ocupado || _seccionNueva == _empleadoPanel.Fila.Seccion)">Cambiar</button>
+            @* Filtrar el cuadrante a este empleado (botón derecho de R3 sobre la col. 0). *@
+            <button class="r5-btn r5-btn--fantasma" style="align-self: flex-end;"
+                    @onclick="() => { _filtroUsuario = _empleadoPanel.Fila.Usuario; _empleadoPanel = null; }">Filtrar cuadrante</button>
             <button class="r5-btn r5-btn--fantasma" style="align-self: flex-end;" @onclick="() => _empleadoPanel = null">Cerrar</button>
         </div>
     }
@@ -227,7 +242,14 @@
     private int _semanaActual;
     private DateTime _finSemanaActual;
 
-    private List<FilaVm> FilasSeccion => _filas.Where(f => f.Fila.Seccion == _seccion).ToList();
+    private bool _confirmarCambios;             // tmConfirm de R3
+    private int _filtroUsuario;                 // 0 = sin filtro de empleado
+    private (int Usuario, DateTime Fecha)? _pintarArmado;
+
+    private List<FilaVm> FilasSeccion => _filas
+        .Where(f => f.Fila.Seccion == _seccion
+            && (_filtroUsuario == 0 || f.Fila.Usuario == 0 || f.Fila.Usuario == _filtroUsuario))
+        .ToList();
 
     protected override async Task OnInitializedAsync()
     {
@@ -372,6 +394,17 @@
         { MostrarError("No editable: solo se pueden modificar semanas posteriores a la actual."); return; }
         if (_pincel.T is > 0 and < 100 && (EsFestivo(fecha) || fecha.DayOfWeek == DayOfWeek.Sunday))
         { MostrarError($"No se puede poner «{_pincel.TipoTexto()}» en festivo o domingo (duplicaría el saldo de horas)."); return; }
+
+        // Candado tmConfirm de R3: sobrescribir una celda con contenido pide 2º toque.
+        if (_confirmarCambios && vm.Celdas[dia] is { T: not 100 }
+            && _pintarArmado != (vm.Fila.Usuario, fecha))
+        {
+            _pintarArmado = (vm.Fila.Usuario, fecha);
+            _tipoAviso = "aviso";
+            _aviso = $"La celda de {vm.Fila.Nombre} · {fecha:dd/MM} tiene contenido. Toca de nuevo para sobrescribir.";
+            return;
+        }
+        _pintarArmado = null;
 
         var anterior = vm.Celdas[dia] ?? HorarioCelda.Libre();
         var nueva = new HorarioCelda { T = _pincel.T, H = _pincel.H };  // sin comentario

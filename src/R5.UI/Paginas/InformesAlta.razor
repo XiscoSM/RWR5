@@ -3,6 +3,7 @@
    la pantalla se adapta igual que hace R3. Escaneo encadenado; el tipo con
    RellenarCampos precarga los valores desde la BD. *@
 @page "/informes/alta"
+@page "/informes/alta/{NumRuta:int}"
 @inject InformeService Informes
 @inject SesionUsuario Sesion
 @inject NavigationManager Nav
@@ -106,8 +107,10 @@
                     @if (_tipoElegido.Cajas > 0)
                     {
                         <div class="r5-campo" style="min-width: 130px; flex: 1;">
-                            <label>Cajas@(Oblig(_tipoElegido.Cajas))</label>
-                            <input class="r5-input r5-input--numero" type="text" inputmode="numeric" min="0" @bind="_cajas" />
+                            <label>Cajas@(Oblig(_tipoElegido.Cajas))@(_linea?.Prod.UnidsCaja > 0 ? $" (U/C {_linea.Prod.UnidsCaja})" : "")</label>
+                            @* Cajas × U/C rellena la cantidad si el producto no admite decimales (R3 1309). *@
+                            <input class="r5-input r5-input--numero" type="text" inputmode="numeric" min="0"
+                                   @bind="_cajas" @bind:after="CajasCambiadas" />
                         </div>
                     }
                     @if (_tipoElegido.Cant > 0)
@@ -230,7 +233,28 @@
     private static string Etiqueta(string? desc, string porDefecto)
         => string.IsNullOrWhiteSpace(desc) ? porDefecto : desc;
 
-    protected override Task OnInitializedAsync() => CargarTiposAsync();
+    /// <summary>Con nº en la ruta, se reabre ese informe PENDIENTE para seguir
+    /// añadiéndole líneas (Bcontinuar de R3).</summary>
+    [Parameter] public int NumRuta { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarTiposAsync();
+        if (NumRuta <= 0) return;
+
+        var inf = await Informes.GetInformeAsync(NumRuta);
+        if (!inf.Ok || inf.Datos is null || inf.Datos.NumInforme <= 0)
+        { MostrarError($"No se pudo cargar el informe {NumRuta}: {inf.Error}"); return; }
+        if (inf.Datos.Estado)
+        { MostrarError($"El informe {NumRuta} ya está registrado: no admite más líneas."); return; }
+
+        _numInforme = inf.Datos.NumInforme;
+        _tipoElegido = _tipos.FirstOrDefault(t => t.Tipo == inf.Datos.TipoInforme?.Tipo);
+        if (_tipoElegido is null)
+        { MostrarError($"El tipo del informe {NumRuta} no está disponible."); _numInforme = 0; return; }
+        _codAlmDest = inf.Datos.AlmDest?.CodAlm ?? 0;
+        _lineasAnadidas = (int)inf.Datos.Prods;
+    }
 
     private async Task CargarTiposAsync()
     {
@@ -312,6 +336,15 @@
             if (respuesta.Datos.Prod.CodProd <= 0) { MostrarError($"El código {codigo} no corresponde a ningún producto."); return; }
 
             _linea = respuesta.Datos;
+            // Bloqueos del producto: aviso informativo, como los MsgBox de R3 (992-999).
+            var bloqueos = new List<string>();
+            if (_linea.Prod.BloqueoCompra) bloqueos.Add("compra");
+            if (_linea.Prod.BloqueoPedAlm) bloqueos.Add("pedido a almacén");
+            if (bloqueos.Count > 0)
+            {
+                _tipoAviso = "aviso";
+                _aviso = $"{_linea.Prod.DescProd}: producto con bloqueo de {string.Join(" y ", bloqueos)}.";
+            }
             // Precarga de los tipos con RellenarCampos (precios/valores de la BD).
             _cajas = _linea.Cajas ?? 0;
             _cant = _linea.Cant ?? 0;
@@ -332,6 +365,13 @@
             StateHasChanged();
             await JS.InvokeVoidAsync("r5.seleccionar", "busquedaInforme");
         }
+    }
+
+    // Cajas × U/C rellena la cantidad para productos sin decimales (tbcajas de R3).
+    private void CajasCambiadas()
+    {
+        if (_linea is null || _linea.Prod.DecimalesEnCant || _linea.Prod.UnidsCaja <= 0) return;
+        if (_cajas > 0) _cant = _cajas * _linea.Prod.UnidsCaja;
     }
 
     private bool ValidarObligatorios(out string faltan)

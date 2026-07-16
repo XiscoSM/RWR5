@@ -50,6 +50,15 @@
                         <span class="r5-badge @(informe.Estado ? "r5-badge--cerrado" : "r5-badge--abierto")">
                             @(informe.Estado ? "Registrado" : "Pendiente")
                         </span>
+                        @if (!informe.Estado)
+                        {
+                            @* Reabrir el informe pendiente para seguir añadiendo líneas (Bcontinuar de R3). *@
+                            <span class="r5-btn r5-btn--secundario r5-btn--sm"
+                                  @onclick:stopPropagation="true"
+                                  @onclick='() => Nav.NavigateTo($"/informes/alta/{informe.NumInforme}")'>
+                                Continuar
+                            </span>
+                        }
                     </span>
                 </button>
             </Fila>
