@@ -6,6 +6,7 @@
    Escanear un EAN valida que el producto en mano es el de la línea. *@
 @page "/preparacion/{FechaRuta}/{Pedido:int}/picking"
 @inject PreparacionService Preparaciones
+@inject ProductoService Productos
 @inject TraspasoService Traspasos
 @inject SesionUsuario Sesion
 @inject NavigationManager Nav
@@ -153,14 +154,29 @@
                     <div><dt>Ya preparada</dt><dd>@Cantidad(_linea.CantEnviada, _linea.Prod.DecimalesEnCant)</dd></div>
                 }
                 <div><dt>Stock central</dt><dd>@Cantidad(_linea.StockCentral, _linea.Prod.DecimalesEnCant)</dd></div>
+                @if (Sesion.Usuario!.MostrarEanPreparacion && _linea.Ean.CodEan > 0)
+                {
+                    @* RW_MostrarEanPreparacion de R3: EAN y código a la vista del preparador. *@
+                    <div><dt>EAN · Cód.</dt><dd>@_linea.Ean.CodEan · @_linea.Prod.CodProd</dd></div>
+                }
             </dl>
 
             <form @onsubmit="ValidarEscaneoAsync" class="r5-buscador">
                 <input id="escaneoPicking" class="r5-input" type="text" inputmode="numeric"
-                       placeholder="Escanea el producto para validar (opcional)"
+                       placeholder="@(EanObligatorio ? "Escanea el producto para validar (OBLIGATORIO)" : "Escanea el producto para validar (opcional)")"
                        @bind="_escaneo" @bind:event="oninput" />
                 <button type="submit" class="r5-btn r5-btn--secundario" disabled="@string.IsNullOrWhiteSpace(_escaneo)">Validar</button>
             </form>
+
+            @if (_linea.Prod.ControlaLotes)
+            {
+                @* Producto con trazabilidad: lote tecleado o leído del EAN128/compuesto (R3 1681-1703). *@
+                <div class="r5-campo" style="max-width: 260px;">
+                    <label for="lotePick">Lote</label>
+                    <input id="lotePick" class="r5-input r5-input--numero" type="text" inputmode="numeric" maxlength="10"
+                           @bind="_loteTexto" disabled="@_ocupado" />
+                </div>
+            }
 
             <div class="r5-fila">
                 <div class="r5-campo" style="flex:1">
@@ -176,8 +192,12 @@
                 </div>
             </div>
 
+            @if (EanObligatorio && !_eanValidado)
+            {
+                <Aviso Tipo="aviso" Mensaje="Este almacén exige validar el producto escaneando su EAN antes de confirmar." />
+            }
             <button class="r5-btn r5-btn--primario r5-btn--bloque" @onclick="ConfirmarAsync"
-                    disabled="@(_ocupado || _cantidad <= 0)">
+                    disabled="@(_ocupado || _cantidad <= 0 || (EanObligatorio && !_eanValidado))">
                 @(_ocupado ? "Grabando…" : $"Confirmar {Cantidad(_cantidad, _linea.Prod.DecimalesEnCant)} y seguir")
             </button>
         </div>
@@ -317,8 +337,21 @@
     private async Task AnadirProdNuevoAsync()
     {
         if (_ocupado || _fecha is null || _cabecera is null || !Sesion.Autenticado) return;
-        if (!int.TryParse(_prodNuevoTexto.Trim(), out int codProd) || codProd <= 0)
-        { MostrarError("Código de producto no válido."); return; }
+        string texto = _prodNuevoTexto.Trim();
+        int codProd = 0;
+        // R3 da de alta el producto no incluido POR EAN (Bañadirprod: checksum +
+        // SelectEanBD); también se admite el código interno tecleado.
+        if (texto.Length >= 8 && texto.All(char.IsAsciiDigit))
+        {
+            if (!CodigoBarras.ValidaEan13_14(texto))
+            { MostrarError($"EAN incorrecto: dígito de control erróneo ({texto})."); return; }
+            var prod = await Productos.GetPorEanAsync(long.Parse(texto));
+            if (!prod.Ok || prod.Datos is null || prod.Datos.CodProd <= 0)
+            { MostrarError($"El EAN {texto} no corresponde a ningún producto."); return; }
+            codProd = prod.Datos.CodProd;
+        }
+        else if (!int.TryParse(texto, out codProd) || codProd <= 0)
+        { MostrarError("Escanea el EAN del producto o teclea su código."); return; }
         if (_cantNueva <= 0 || _cantNueva >= 10000) { MostrarError("Cantidad no válida."); return; }
 
         _ocupado = true;
@@ -352,10 +385,18 @@
         }
     }
 
+    // Escaneo obligatorio si el almacén no tiene NoIntroEanPrep (aceptar_EAN de R3):
+    // sin validar el EAN no se desbloquea la confirmación.
+    private bool _eanValidado;
+    private string _loteTexto = "";
+    private bool EanObligatorio => !(Sesion.Usuario?.Almacen.NoIntroEanPrep ?? true);
+
     private void PrepararLinea(PrepPedCentralLin linea)
     {
         _linea = linea;
         _escaneo = "";
+        _eanValidado = false;
+        _loteTexto = linea.Prod.Lote is > 0 ? linea.Prod.Lote.ToString()! : "";
         decimal pendiente = linea.CantPedida - linea.CantEnviada;
         _cantidad = pendiente > 0 ? pendiente : linea.CantPedida;
         _cajas = (short)(linea.CajasPedidas - linea.CajasEnviadas > 0 ? linea.CajasPedidas - linea.CajasEnviadas : linea.CajasPedidas);
@@ -386,12 +427,35 @@
         }
 
         var usuario = Sesion.Usuario!;
+
+        // Códigos compuestos (EanProdLote de R3): el producto embebido valida directo y
+        // el lote embebido se captura para la trazabilidad de la línea.
+        var parseado = CodigoBarras.TryParse(escaneado);
+        if (parseado is { Prod: > 0 })
+        {
+            if (parseado.Prod == _linea.Prod.CodProd)
+            {
+                _eanValidado = true;
+                if (parseado.Lote > 0) _loteTexto = parseado.Lote.ToString();
+                _tipoAviso = "exito";
+                _aviso = "Producto correcto.";
+            }
+            else
+            {
+                MostrarError($"El escaneo NO corresponde a {_linea.Prod.DescProd}.");
+            }
+            _escaneo = "";
+            await JS.InvokeVoidAsync("r5.seleccionar", "escaneoPicking");
+            return;
+        }
+
         long.TryParse(_escaneo.Trim(), out long ean);
         var respuesta = await Traspasos.GetLineaProductoAsync(0, DateTime.Today,
             usuario.Almacen.CodAlm, _cabecera!.Alm.CodAlm, 0, ean, _fecha, Pedido);
 
         if (respuesta.Ok && respuesta.Datos?.Prod.CodProd == _linea.Prod.CodProd)
         {
+            _eanValidado = true;
             _tipoAviso = "exito";
             _aviso = "Producto correcto.";
         }
@@ -446,7 +510,8 @@
                 Cant = _cantidad,
                 Importe = Math.Round(_cantidad * coste, 2),
                 CodUsuario = usuario.CodUsuario,
-                Lote = _linea.Prod.Lote ?? 0,
+                // Lote tecleado o leído del código compuesto; si no, el de la línea.
+                Lote = int.TryParse(_loteTexto.Trim(), out int lote) && lote > 0 ? lote : _linea.Prod.Lote ?? 0,
                 Registrado = false,
                 FechaPedido = _fecha.Value,
                 NumPedido = Pedido
