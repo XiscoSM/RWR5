@@ -32,6 +32,10 @@ public sealed class ConfiguracionApp
     /// <summary>Último usuario que inició sesión, para precargar el login.</summary>
     public short UltimoUsuario { get; set; }
 
+    /// <summary>Última vía de entrada del terminal: true = Empleado/PIN (vía rápida,
+    /// canon R3), false = Usuario Pda + contraseña. Por defecto Empleado/PIN.</summary>
+    public bool LoginPorEmpleado { get; set; } = true;
+
     /// <summary>Puerto COM de la báscula (0 = sin báscula). Solo Windows por ahora.</summary>
     public byte PuertoBalanza { get; set; }
 
@@ -53,6 +57,7 @@ public sealed class ConfiguracionApp
         NumTerminal = otra.NumTerminal;
         DeviceId = otra.DeviceId;
         UltimoUsuario = otra.UltimoUsuario;
+        LoginPorEmpleado = otra.LoginPorEmpleado;
         PuertoBalanza = otra.PuertoBalanza;
     }
 }

@@ -29,4 +29,6 @@ public sealed class Usuario
     public bool FactTpvAnula { get; set; }
     /// <summary>Perfil sobre la ficha de cliente TPV: 0 no crear, 1 modif. parcial, 2 modif. todo, 3 avanzadas.</summary>
     public byte PerfilClienteTpv { get; set; }
+    /// <summary>Empleado ligado a la sesión (0 = usuario Pda puro). La sesión SIEMPRE es RW_Usuario.</summary>
+    public int Empleado { get; set; }
 }

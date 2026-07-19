@@ -18,6 +18,11 @@ public sealed class UsuarioService
         => _api.GetAsync<Usuario>($"Usuario/{codUsuario}?pwd={pwd}", ct);
 
     /// <summary>GET Usuario/{cod}/Almacen/{codAlm} — almacén si el usuario tiene permiso.</summary>
+    /// <summary>GET Usuario/Empleado/{n}/Login?pin= — login Empleado/PIN: el PIN se valida
+    /// server-side y la sesión devuelta es la del RW_Usuario asignado al empleado.</summary>
+    public Task<ApiRespuesta<Usuario>> LoginEmpleadoAsync(int empleado, short pin, CancellationToken ct = default)
+        => _api.GetAsync<Usuario>($"Usuario/Empleado/{empleado}/Login?pin={pin}", ct);
+
     public Task<ApiRespuesta<Almacen>> GetAlmacenAsync(short codUsuario, short codAlm, CancellationToken ct = default)
         => _api.GetAsync<Almacen>($"Usuario/{codUsuario}/Almacen/{codAlm}", ct);
 }

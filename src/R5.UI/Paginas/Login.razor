@@ -1,6 +1,8 @@
-@* Login: el operario entra con código de usuario + contraseña numérica (como en RW).
-   Campos grandes centrados, último usuario precargado, Enter valida.
-   Acceso directo a Ajustes: sin URL de API o sin enrolar no se puede entrar. *@
+@* Login dual (canon R3 feat/m17-usabilidad): la vía habitual es EMPLEADO + PIN (el PIN
+   se valida en el servidor y la sesión devuelta es la del RW_Usuario asignado); la vía
+   alternativa "Usuario Pda" es nº de usuario RW + contraseña. En ambos casos la SESIÓN
+   es siempre un RW_Usuario — el empleado queda ligado como sujeto de RRHH.
+   Campos grandes centrados, Enter valida. Sin URL de API o sin enrolar no se entra. *@
 @page "/login"
 @layout LayoutVacio
 @inject UsuarioService Usuarios
@@ -24,28 +26,64 @@
                 <Aviso Tipo="info" Mensaje="Dispositivo sin enrolar. Configura la conexión en Ajustes antes de entrar." />
             }
 
-            <form @onsubmit="EntrarAsync">
-                <div class="r5-columna">
-                    <div class="r5-campo">
-                        <label for="usuario">Usuario</label>
-                        <input id="usuario" class="r5-input r5-input--numero" type="text" inputmode="numeric"
-                               @bind="_codUsuario" @bind:event="oninput" autofocus disabled="@_validando" />
+            @if (_modoEmpleado)
+            {
+                <form @onsubmit="EntrarEmpleadoAsync">
+                    <div class="r5-columna">
+                        <div class="r5-campo">
+                            <label for="numPersonal">Nº personal (empleado)</label>
+                            <input id="numPersonal" class="r5-input r5-input--numero" type="text" inputmode="numeric"
+                                   @bind="_empleado" @bind:event="oninput" autofocus disabled="@_validando" />
+                        </div>
+
+                        <div class="r5-campo">
+                            <label for="pin">PIN secreto (4 dígitos)</label>
+                            <input id="pin" class="r5-input r5-input--numero" type="password" inputmode="numeric" maxlength="4"
+                                   @bind="_pin" @bind:event="oninput" disabled="@_validando" />
+                        </div>
+
+                        <Aviso Mensaje="@_error" />
+
+                        <button type="submit" class="r5-btn r5-btn--primario r5-btn--bloque"
+                                disabled="@(_validando || !Credenciales.Enrolado || _empleado is null or <= 0 || _pin is null)">
+                            @(_validando ? "Validando…" : "Entrar")
+                        </button>
+                        <button type="button" class="r5-btn r5-btn--fantasma r5-btn--bloque"
+                                @onclick="() => CambiarModo(false)" disabled="@_validando">
+                            Entrar como Usuario Pda
+                        </button>
                     </div>
+                </form>
+            }
+            else
+            {
+                <form @onsubmit="EntrarUsuarioAsync">
+                    <div class="r5-columna">
+                        <div class="r5-campo">
+                            <label for="usuario">Nº de Usuario Pda</label>
+                            <input id="usuario" class="r5-input r5-input--numero" type="text" inputmode="numeric"
+                                   @bind="_codUsuario" @bind:event="oninput" autofocus disabled="@_validando" />
+                        </div>
 
-                    <div class="r5-campo">
-                        <label for="pwd">Contraseña</label>
-                        <input id="pwd" class="r5-input r5-input--numero" type="password" inputmode="numeric"
-                               @bind="_pwd" @bind:event="oninput" disabled="@_validando" />
+                        <div class="r5-campo">
+                            <label for="pwd">Contraseña</label>
+                            <input id="pwd" class="r5-input r5-input--numero" type="password" inputmode="numeric"
+                                   @bind="_pwd" @bind:event="oninput" disabled="@_validando" />
+                        </div>
+
+                        <Aviso Mensaje="@_error" />
+
+                        <button type="submit" class="r5-btn r5-btn--primario r5-btn--bloque"
+                                disabled="@(_validando || !Credenciales.Enrolado || _codUsuario is null or <= 0 || _pwd is null)">
+                            @(_validando ? "Validando…" : "Entrar")
+                        </button>
+                        <button type="button" class="r5-btn r5-btn--fantasma r5-btn--bloque"
+                                @onclick="() => CambiarModo(true)" disabled="@_validando">
+                            Entrar con Empleado y PIN
+                        </button>
                     </div>
-
-                    <Aviso Mensaje="@_error" />
-
-                    <button type="submit" class="r5-btn r5-btn--primario r5-btn--bloque"
-                            disabled="@(_validando || !Credenciales.Enrolado || _codUsuario is null or <= 0 || _pwd is null)">
-                        @(_validando ? "Validando…" : "Entrar")
-                    </button>
-                </div>
-            </form>
+                </form>
+            }
 
             <div class="r5-login__pie">
                 <span>v@(VersionApp)</span>
@@ -58,6 +96,9 @@
 </div>
 
 @code {
+    private bool _modoEmpleado = true;   // vía rápida por defecto (canon R3)
+    private int? _empleado;
+    private short? _pin;
     private short? _codUsuario;
     private int? _pwd;
     private bool _validando;
@@ -71,59 +112,37 @@
         // Si ya hay sesión (p. ej. se llegó a /login con el botón atrás), no re-loguear.
         if (Sesion.Autenticado) { Nav.NavigateTo("/inicio", replace: true); return; }
         if (Config.UltimoUsuario > 0) _codUsuario = Config.UltimoUsuario;
+        // El terminal recuerda su última vía de entrada.
+        _modoEmpleado = Config.LoginPorEmpleado;
     }
 
-    // Con el usuario ya precargado, el foco va directo a la contraseña (el caso diario).
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender && _codUsuario is > 0)
+        // Con el usuario Pda precargado, el foco va directo a la contraseña (caso diario).
+        if (firstRender && !_modoEmpleado && _codUsuario is > 0)
             await JS.InvokeVoidAsync("r5.seleccionar", "pwd");
     }
 
-    private async Task EntrarAsync()
+    private void CambiarModo(bool empleado)
     {
-        if (_validando || _codUsuario is null or <= 0 || _pwd is null) return;
+        _modoEmpleado = empleado;
+        _error = "";
+    }
 
+    // Vía rápida: Empleado + PIN. El PIN lo valida el servidor contra la ficha central y
+    // la sesión llega ya mapeada a su RW_Usuario (LoginEmpleadoPin de R3).
+    private async Task EntrarEmpleadoAsync()
+    {
+        if (_validando || _empleado is null or <= 0 || _pin is null) return;
         _validando = true;
         _error = "";
         try
         {
-            var respuesta = await Usuarios.LoginAsync(_codUsuario.Value, _pwd.Value);
-            if (!respuesta.Ok || respuesta.Datos is null)
-            {
-                await ErrorLoginAsync(respuesta.Error);
-                return;
-            }
-            if (respuesta.Datos.CodUsuario <= 0)
-            {
-                await ErrorLoginAsync("Usuario o contraseña incorrectos.");
-                return;
-            }
-
-            // Restricción de red por usuario (Menu_R3:1190): si RW_RedIpUsuario está
-            // informado, alguna IP local debe contener ese fragmento de red.
-            string redPermitida = respuesta.Datos.RedIpUsuario?.Trim() ?? "";
-            if (redPermitida.Length > 0)
-            {
-                bool redOk = System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()
-                    .Where(n => n.OperationalStatus == System.Net.NetworkInformation.OperationalStatus.Up)
-                    .SelectMany(n => n.GetIPProperties().UnicastAddresses)
-                    .Where(a => a.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
-                    .Any(a => a.Address.ToString().Contains(redPermitida, StringComparison.OrdinalIgnoreCase));
-                if (!redOk)
-                {
-                    await ErrorLoginAsync($"El usuario {respuesta.Datos.DescUsuario} no puede iniciar en esta dirección de red. Red permitida: {redPermitida}.");
-                    return;
-                }
-            }
-
-            respuesta.Datos.NumTerminal = Config.NumTerminal;
-            Sesion.IniciarSesion(respuesta.Datos);
-
-            Config.UltimoUsuario = respuesta.Datos.CodUsuario;
-            RepoConfig.Guardar(Config);
-
-            Nav.NavigateTo("/inicio", replace: true);
+            var respuesta = await Usuarios.LoginEmpleadoAsync(_empleado.Value, _pin.Value);
+            if (!respuesta.Ok || respuesta.Datos is null) { await ErrorLoginAsync(respuesta.Error, "pin"); return; }
+            if (respuesta.Datos.CodUsuario <= 0) { await ErrorLoginAsync("Revise usuario y PIN.", "pin"); return; }
+            if (respuesta.Datos.Empleado == 0) respuesta.Datos.Empleado = _empleado.Value;
+            await AbrirSesionAsync(respuesta.Datos, porEmpleado: true);
         }
         finally
         {
@@ -131,14 +150,62 @@
         }
     }
 
-    // Tras un login fallido se limpia la contraseña y se devuelve el foco a ese campo:
-    // el operario reintenta sin borrar a mano ni tocar la pantalla.
-    private async Task ErrorLoginAsync(string mensaje)
+    // Vía alternativa: nº de Usuario Pda + contraseña (RW_Pwd), como el usuario de config.
+    private async Task EntrarUsuarioAsync()
     {
-        _error = mensaje;
+        if (_validando || _codUsuario is null or <= 0 || _pwd is null) return;
+        _validando = true;
+        _error = "";
+        try
+        {
+            var respuesta = await Usuarios.LoginAsync(_codUsuario.Value, _pwd.Value);
+            if (!respuesta.Ok || respuesta.Datos is null) { await ErrorLoginAsync(respuesta.Error, "pwd"); return; }
+            if (respuesta.Datos.CodUsuario <= 0) { await ErrorLoginAsync("Usuario o contraseña incorrectos.", "pwd"); return; }
+            await AbrirSesionAsync(respuesta.Datos, porEmpleado: false);
+        }
+        finally
+        {
+            _validando = false;
+        }
+    }
+
+    private async Task AbrirSesionAsync(Usuario usuario, bool porEmpleado)
+    {
+        // Restricción de red por usuario (Menu_R3:1190): si RW_RedIpUsuario está
+        // informado, alguna IP local debe contener ese fragmento de red.
+        string redPermitida = usuario.RedIpUsuario?.Trim() ?? "";
+        if (redPermitida.Length > 0)
+        {
+            bool redOk = System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()
+                .Where(n => n.OperationalStatus == System.Net.NetworkInformation.OperationalStatus.Up)
+                .SelectMany(n => n.GetIPProperties().UnicastAddresses)
+                .Where(a => a.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+                .Any(a => a.Address.ToString().Contains(redPermitida, StringComparison.OrdinalIgnoreCase));
+            if (!redOk)
+            {
+                await ErrorLoginAsync($"El usuario {usuario.DescUsuario} no puede iniciar en esta dirección de red. Red permitida: {redPermitida}.", porEmpleado ? "pin" : "pwd");
+                return;
+            }
+        }
+
+        usuario.NumTerminal = Config.NumTerminal;
+        Sesion.IniciarSesion(usuario);
+
+        Config.UltimoUsuario = usuario.CodUsuario;
+        Config.LoginPorEmpleado = porEmpleado;
+        RepoConfig.Guardar(Config);
+
+        Nav.NavigateTo("/inicio", replace: true);
+    }
+
+    // Tras un login fallido se limpia el secreto y se devuelve el foco a ese campo.
+    private async Task ErrorLoginAsync(string mensaje, string campoFoco)
+    {
+        _error = mensaje.Length > 0 ? mensaje : "No se pudo validar. Revisa los datos.";
+        _pin = null;
         _pwd = null;
         _validando = false;
         StateHasChanged();
-        await JS.InvokeVoidAsync("r5.seleccionar", "pwd");
+        await JS.InvokeVoidAsync("r5.seleccionar", campoFoco);
     }
 }

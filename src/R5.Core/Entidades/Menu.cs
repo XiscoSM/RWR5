@@ -9,6 +9,8 @@ public sealed class Menu
     public byte CodMenu { get; set; }
     public string DescMenu { get; set; } = "";
     public bool SolicitarPwd { get; set; }
+    /// <summary>Minutos de inactividad hasta bloquear la sesión en este menú (0 = no bloquea).</summary>
+    public short MinutosBloqueo { get; set; }
 
     public Menu() { }
 
