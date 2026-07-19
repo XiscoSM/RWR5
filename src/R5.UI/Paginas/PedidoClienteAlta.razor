@@ -5,6 +5,7 @@
 @page "/pedidoCliente/alta"
 @inject PedidoClienteService Pedidos
 @inject AlmacenService Almacenes
+@inject GestionesService Gestiones
 @inject SesionUsuario Sesion
 @inject NavigationManager Nav
 @inject IJSRuntime JS
@@ -43,8 +44,11 @@
         </div>
         <div class="r5-campo">
             <label for="altaEmpleado">Empleado que atiende</label>
-            <input id="altaEmpleado" class="r5-input r5-input--numero" type="text" inputmode="numeric" maxlength="9"
-                   style="max-width: 140px;" @bind="_empleadoTexto" disabled="@_creando" />
+            <div class="r5-fila">
+                <input id="altaEmpleado" class="r5-input r5-input--numero" type="text" inputmode="numeric" maxlength="9"
+                       style="max-width: 140px;" @bind="_empleadoTexto" @bind:after="ValidarEmpleadoAsync" disabled="@_creando" />
+                <span class="r5-texto-suave">@_empNombre</span>
+            </div>
         </div>
         <div class="r5-fila">
             <div class="r5-campo" style="flex:1">
@@ -93,12 +97,36 @@
         // Prellenado como R3 (línea 785): el PROPIO almacén (reserva en tienda por
         // defecto); el mostrador lo cambia si el pedido va a un central.
         _almCentralTexto = (Sesion.Usuario?.Almacen.CodAlm ?? 0) is var propio and > 0 ? propio.ToString() : "";
-        _empleadoTexto = (Sesion.Usuario?.CodUsuario ?? 0) is var emp and > 0 ? emp.ToString() : "";
+        // Prellenado con el EMPLEADO de la sesión (canon R3: Usuario.Empleado); si la
+        // sesión es de usuario Pda puro, el mostrador teclea quién atiende.
+        _empleadoTexto = (Sesion.Usuario?.Empleado ?? 0) is var emp and > 0 ? emp.ToString() : "";
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender) await JS.InvokeVoidAsync("r5.seleccionar", "altaNombre");
+    }
+
+    // Empleado que atiende validado contra central con nombre a la vista y caché para no
+    // repetir la consulta (ActualizarNombreEmpleadoAlta de R3, f8f03b8).
+    private string _empNombre = "";
+    private int _empValidado;
+
+    private async Task ValidarEmpleadoAsync()
+    {
+        _empNombre = "";
+        _empValidado = 0;
+        if (!int.TryParse(_empleadoTexto.Trim(), out int empleado) || empleado <= 0) return;
+        var r = await Gestiones.GetEmpleadoAsync(empleado);
+        if (r.Ok && r.Datos is not null && !string.IsNullOrWhiteSpace(r.Datos.Nombre))
+        {
+            _empNombre = r.Datos.Nombre;
+            _empValidado = empleado;
+        }
+        else
+        {
+            _empNombre = "(no existe en central)";
+        }
     }
 
     // Muestra el nombre del almacén central tecleado (el 'ActualizarNombreAlmAlta' de R3).
@@ -124,6 +152,14 @@
         { _error = "Falta el almacén que preparará el pedido."; return; }
         if (!int.TryParse(_empleadoTexto.Trim(), out int empleado) || empleado <= 0)
         { _error = "Falta el nº de empleado que atiende."; return; }
+        // El empleado que atiende se valida contra CENTRAL con nombre visible (canon R3
+        // f8f03b8: sin PIN, solo confirmar identidad). Sin empleado válido no hay pedido.
+        if (_empValidado != empleado)
+        {
+            await ValidarEmpleadoAsync();
+            if (_empValidado != empleado)
+            { _error = $"El empleado {empleado} no existe en central."; return; }
+        }
         DateTime entrega = _fechaEntrega.Date + _horaEntrega.ToTimeSpan();
         if (entrega <= DateTime.Now) { _error = "La entrega debe ser posterior a ahora."; return; }
 

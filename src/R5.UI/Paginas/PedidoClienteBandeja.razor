@@ -308,8 +308,16 @@
                 // preparador y "no disponible" en MIS pedidos (aviso al mostrador).
                 var bandeja = await Pedidos.GetBandejaAsync(alm, 0, null, DateTime.Today.AddDays(7));
                 if (bandeja.Ok) _atrasadas = (bandeja.Datos ?? new()).Count(l => l.Atrasada);
+                // Solo cuentan los pedidos VIVOS (ni entregados ni anulados), como R3
+                // c2ae4c6: se cruza la línea no-disp con el estado real del documento.
                 var misNoDisp = await Pedidos.GetBandejaAsync(alm, 1, null, null, 4);
-                if (misNoDisp.Ok) _noDisponibles = (misNoDisp.Datos ?? new()).Count;
+                if (misNoDisp.Ok)
+                {
+                    var vivos = await Pedidos.GetListaAsync(alm, -1);
+                    var setVivos = new HashSet<int>((vivos.Datos ?? new())
+                        .Where(p => p.Vivo).Select(p => p.Pedido));
+                    _noDisponibles = (misNoDisp.Datos ?? new()).Count(l => setVivos.Contains(l.Pedido));
+                }
             }
         }
         finally
