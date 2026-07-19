@@ -44,6 +44,19 @@ public static class CatalogoModulos
         [35] = new(35, "IFA Central", "/ifa", "ifa", true, "slate", 52),
     };
 
+    /// <summary>CodMenu del módulo al que pertenece una ruta ("pedidoCentral/alta" → 19);
+    /// 0 si la ruta no es de un módulo (inicio, login, ajustes…).</summary>
+    public static byte CodMenuDeRuta(string ruta)
+    {
+        ruta = ruta.TrimStart('/');
+        foreach (var modulo in _modulos.Values)
+        {
+            if (ruta.StartsWith(modulo.Ruta.TrimStart('/'), StringComparison.OrdinalIgnoreCase))
+                return modulo.CodMenu;
+        }
+        return 0;
+    }
+
     /// <summary>Cruza los menús con permiso del usuario con el catálogo de R5.</summary>
     public static IReadOnlyList<ModuloApp> ParaUsuario(IEnumerable<Menu> menus)
     {

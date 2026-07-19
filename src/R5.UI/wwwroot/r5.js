@@ -33,5 +33,33 @@ window.r5 = {
                 tono(220, 0.24, 0.18);
             }
         } catch { /* sin audio no se rompe nada */ }
+    },
+
+    // ---- Vigilancia de sesión (bloqueo por inactividad y por pérdida de foco) ----
+    // Actividad = teclas/puntero/rueda (mismo filtro global que el FMenu_R3 de R3).
+    // Al perder el foco A FAVOR DE OTRA APLICACIÓN se avisa a .NET al instante; los
+    // diálogos propios son HTML dentro del mismo WebView y no disparan blur.
+    _ultimaActividad: Date.now(),
+    _vigilanciaRef: null,
+    iniciarVigilancia: function (dotnetRef) {
+        this._vigilanciaRef = dotnetRef;
+        if (this._vigilanciaInstalada) return;
+        this._vigilanciaInstalada = true;
+        const marca = () => { window.r5._ultimaActividad = Date.now(); };
+        for (const ev of ["pointerdown", "keydown", "wheel", "touchstart"]) {
+            document.addEventListener(ev, marca, { capture: true, passive: true });
+        }
+        window.addEventListener("blur", () => {
+            const ref = window.r5._vigilanciaRef;
+            if (ref) ref.invokeMethodAsync("AppPerdioFoco").catch(() => { });
+        });
+        document.addEventListener("visibilitychange", () => {
+            if (document.visibilityState !== "hidden") return;
+            const ref = window.r5._vigilanciaRef;
+            if (ref) ref.invokeMethodAsync("AppPerdioFoco").catch(() => { });
+        });
+    },
+    segundosInactivo: function () {
+        return (Date.now() - this._ultimaActividad) / 1000;
     }
 };

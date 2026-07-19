@@ -698,3 +698,11 @@ h3 { font-size: var(--texto-lg); }
 .r5-cuadrante tr.semana td.festivo { color: #ffd0d0; font-weight: 700; }
 .r5-cuadrante .empleado { padding: 4px 8px; white-space: nowrap; }
 .r5-cuadrante .pasada .empleado { background: #e8e8e8; color: var(--c-texto-suave); }
+
+/* ---------- Pantalla de bloqueo de sesión (canon R3) ---------- */
+.r5-bloqueo {
+    position: fixed; inset: 0; z-index: 1000;
+    background: color-mix(in srgb, var(--c-primario-osc, #0e4d64) 88%, black);
+    display: flex; align-items: center; justify-content: center;
+    padding: var(--esp-5);
+}
